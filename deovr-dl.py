@@ -43,12 +43,8 @@ def parse_web(url):
     video_data_json = match.group(1)
     video_data = json.loads(video_data_json)
     # print(json.dumps(video_data, indent=4))
-    
-    parsed_data = {
-        'title': video_data['title'],
-        'src': video_data['src'],
-    }
-    return True,parsed_data
+
+    return True,video_data
 
 def download_chunk(tid, result_queue, shared_data, lock):
     headers = {
@@ -120,13 +116,25 @@ def download_file_in_chunks(url, start_offset=0, chunk_size=100 * 1024 * 1024, o
             f.write(chunk)
     print(f"Download completed: {shared_data['total_size']:,}|{shared_data['total_size']/1024**2:.2f} MiB")
 
+def seconds_to_hms(seconds):
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    secs = seconds % 60
+    return f"{hours:02}:{minutes:02}:{secs:02}"
+
+def print_formats(src_list):
+    for i, s in enumerate(src_list):
+        print(f"{i}: \t{s['quality']} \t{s['width']:>5d}x{s['height']:<5d} \t{s['encoding']} \t{s['mimeType']}")
+        
 parser = argparse.ArgumentParser(description='Download url from deovr')
 parser.add_argument('-u', '--url', help='URL of video page')
 parser.add_argument('-O', '--output-dir', default='./', help='Output file dir')
 parser.add_argument('-t', '--title', default='', help='Used to construct filename. If not set, parse title from web')
 
 parser.add_argument('-n', '--thread-number', type=int, default=6, help='parallel download threads, default 6')
-parser.add_argument('-c', '--code', default='h264', help='Select video codec, e.g h264, h265')
+parser.add_argument('-F', '--list-format', action="store_true", help='list all available format')
+parser.add_argument('-c', '--encoding', nargs='+', default='h264', help='filter selected encoding')
+parser.add_argument('-f', '--select-format-idx', type=int, help='select format by index. If not set, select the best quality with filted encoding')
 
 parser.add_argument('-C', '--chunck-size', type=int,  default=25*1024**2, help='Download in chunks of n bytes, default 25 MiB')
 # parser.add_argument('-S', '--start-offset', type=int, help='download skip the first n bytes', default=0)
@@ -136,18 +144,27 @@ success, parsed_data = parse_web(args.url)
 if not success:
     print('Failed to parse web')
     exit(-1)
-print(f"Title: {parsed_data['title']}")
+
+print(f"**** Parsed data:")
+print(f"** Title: {parsed_data['title']}")
+print(f"** Angle: {parsed_data['angle']}")
+print(f"** Format: {parsed_data['format']}")
+print(f"** Duration: {seconds_to_hms(parsed_data['duration'])}")
+
+src_list = parsed_data['src']
+src_list.sort(key=lambda x: int(x['quality'][:-1]))
+if args.list_format:
+    print_formats(src_list)
+    exit(0)
 
 # get url
-filter_url = []
-for i,src in enumerate(parsed_data['src']):
-    if src['encoding'] == args.code:
-        filter_url.append((src['url'], src['quality']))
-
-filter_url.sort(key=lambda x: x[1], reverse=True)
-
-selected_url, selected_quality = filter_url[0]
-print(f"Selected quality: {selected_quality}")
+if not args.select_format_idx:
+    filter_src = [src for src in src_list if src['encoding'] in args.encoding]
+    selected_src = filter_src[-1]
+else:
+    selected_src = src_list[args.select_format_idx]
+selected_url = selected_src['url']
+print(f"Selected quality: {selected_src['quality']}")
 
 # download url
 if not args.title:

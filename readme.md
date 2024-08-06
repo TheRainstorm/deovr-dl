@@ -13,15 +13,17 @@ pip install -r requirements.txt
 ```
 
 ```shell
-python deovr-dl.py -u https://deovr.com/oraehm
+python deovr-dl.py -u https://deovr.com/oraehm          # download best quality video
 python deovr-dl.py -O ./output -u https://deovr.com/oraehm       # specify output dir
 python deovr-dl.py -O ./output -u https://deovr.com/oraehm -n 6  # download with 6 threads
+python deovr-dl.py -u https://deovr.com/oraehm -F       # list all available format
+python deovr-dl.py -u https://deovr.com/oraehm -f 0     # select format by index
 ```
 
 help:
 
 ```shell
-usage: deovr-dl.py [-h] [-u URL] [-O OUTPUT_DIR] [-t TITLE] [-n THREAD_NUMBER] [-c CODE] [-C CHUNCK_SIZE]
+usage: deovr-dl.py [-h] [-u URL] [-O OUTPUT_DIR] [-t TITLE] [-n THREAD_NUMBER] [-F] [-c ENCODING [ENCODING ...]] [-f SELECT_FORMAT_IDX] [-C CHUNCK_SIZE]
 
 Download url from deovr
 
@@ -34,7 +36,11 @@ options:
                         Used to construct filename. If not set, parse title from web
   -n THREAD_NUMBER, --thread-number THREAD_NUMBER
                         parallel download threads, default 6
-  -c CODE, --code CODE  Select video codec, e.g h264, h265
+  -F, --list-format     list all available format
+  -c ENCODING [ENCODING ...], --encoding ENCODING [ENCODING ...]
+                        filter selected encoding
+  -f SELECT_FORMAT_IDX, --select-format-idx SELECT_FORMAT_IDX
+                        select format by index. If not set, select the best quality with filted encoding
   -C CHUNCK_SIZE, --chunck-size CHUNCK_SIZE
                         Download in chunks of n bytes, default 25 MiB
 
