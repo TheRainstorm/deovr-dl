@@ -1,9 +1,17 @@
+import threading
+import queue
 import os
 import requests
 import argparse
 from bs4 import BeautifulSoup
 import re
 import json
+
+def sanitize_filename(filename):
+    # windows forbidden characters
+    forbidden_chars = r'[\\/:"*?<>|]'
+    sanitized = re.sub(forbidden_chars, ' ', filename)
+    return sanitized
 
 def parse_web(url):
     headers = {
@@ -42,7 +50,44 @@ def parse_web(url):
     }
     return True,parsed_data
 
-def download_file_in_chunks(url, start_offset=0, chunk_size=100 * 1024 * 1024, output_file='output.mp4'):
+def download_chunk(tid, result_queue, shared_data, lock):
+    while True:
+        with lock:
+            start = shared_data['start']
+            total_size = shared_data['total_size']
+            if start >= total_size:
+                break
+            shared_data['start'] += shared_data['chunk_size']
+        end = start + shared_data['chunk_size'] - 1
+        print(f"Thread {tid}: Downloading bytes {start:,}-{end:,}")
+        
+        chunk_headers = shared_data['headers'].copy()
+        chunk_headers['Range'] = f'bytes={start}-{end}'
+        response = requests.get(shared_data['url'], headers=chunk_headers, stream=True)
+
+        if response.status_code == 206:
+            result_queue.put((tid, start, response.content))
+        elif response.status_code == 416:
+            with lock:
+                shared_data['total_size'] = min(shared_data['total_size'], end+1)  # set temp total size, true size is smaller
+            # retry
+            chunk_headers['Range'] = f'bytes={start}-'
+            response = requests.get(shared_data['url'], headers=chunk_headers, stream=True)
+            end = start + len(response.content) - 1
+            if start >= end: # still 416, start is too big
+                break
+            with lock:
+                shared_data['total_size'] = min(shared_data['total_size'], end+1)  # set temp total size, true size is smaller
+            result_queue.put((tid, start, response.content))
+            print(f"Thread {tid}: 416, downloaded bytes {start:,}-{end:,}")
+            break
+        else:
+            print(f'{tid} Error: HTTP response code {response.status_code}')
+            exit(-1)
+    result_queue.put((tid, -1, None))
+    print(f'Thread {tid} finished')
+
+def download_file_in_chunks(url, start_offset=0, chunk_size=100 * 1024 * 1024, output_file='output.mp4', max_threads=4):
     headers = {
         'accept': '*/*',
         'accept-language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7,en-GB;q=0.6,es;q=0.5,pt;q=0.4',
@@ -57,46 +102,45 @@ def download_file_in_chunks(url, start_offset=0, chunk_size=100 * 1024 * 1024, o
         'sec-fetch-site': 'same-site',
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36 Edg/127.0.0.0'
     }
+    
+    shared_data = {
+        'headers': headers,
+        'url': url,
+        'chunk_size': chunk_size,
+        'start': 0,
+        'total_size': 1024**5,  # big enough size
+    }
+    
+    lock = threading.Lock()
 
-    # get video file total size
-    total_size = 100 * 1024**3 # 100GB, impossible to get the real size
-    # response = requests.head(url, headers=headers)
-    # total_size = int(response.headers.get('content-length', 0))
-    # print('Total file size:', total_size)
-
+    result_queue = queue.Queue()
+    for i in range(max_threads):
+        t = threading.Thread(target=download_chunk, args=(i, result_queue, shared_data, lock))
+        t.start()
+    
+    count_finished = 0
     with open(output_file, 'wb') as f:
-        for start in range(start_offset, total_size, chunk_size):
-            end = min(start + chunk_size - 1, total_size - 1)
-            range_header = f'bytes={start}-{end}'
-            chunk_headers = headers.copy()
-            chunk_headers['Range'] = range_header
-            response = requests.get(url, headers=chunk_headers, stream=True)
-
-            if response.status_code == 206:  # 206 Partial Content
-                f.write(response.content)
-                print(f'Downloaded bytes {start}-{end}')
-            elif response.status_code == 416:
-                print("Final chunk")
-                range_header = f'bytes={start}-'
-                chunk_headers = headers.copy()
-                chunk_headers['Range'] = range_header
-                response = requests.get(url, headers=chunk_headers, stream=True)
-                f.write(response.content)
-                end = start + len(response.content) - 1
-                print(f'Downloaded bytes {start}-{end}')
-                break
-            else:
-                print('Error: HTTP response code', response.status_code)
-                break
+        while True:
+            tid, start, chunk = result_queue.get()
+            if start == -1:
+                count_finished += 1
+                if count_finished == max_threads:
+                    break
+                continue
+            # print(f'Thread {tid}: Downloaded bytes {start}-{start + len(chunk) - 1}')
+            f.seek(start)
+            f.write(chunk)
+    print(f"Download completed: {shared_data['total_size']:,}|{shared_data['total_size']/1024**2:.2f} MiB")
 
 parser = argparse.ArgumentParser(description='Download url from deovr')
-parser.add_argument('-u', '--url', help='URL of deovr web page')
+parser.add_argument('-u', '--url', help='URL of video page')
 parser.add_argument('-O', '--output-dir', default='./', help='Output file dir')
-parser.add_argument('-t', '--title', default='', help='filename = <title>.mp4')
+parser.add_argument('-t', '--title', default='', help='Used to construct filename. If not set, parse title from web')
 
-parser.add_argument('-c', '--code', default='h264', help='select codec')
+parser.add_argument('-n', '--thread-number', type=int, default=6, help='parallel download threads, default 6')
+parser.add_argument('-c', '--code', default='h264', help='Select video codec, e.g h264, h265')
 
-parser.add_argument('-C', '--chunck-size', type=int,  default=100*1024**2, help='Download in chunks of n bytes')
+parser.add_argument('-C', '--chunck-size', type=int,  default=25*1024**2, help='Download in chunks of n bytes, default 25 MiB')
 # parser.add_argument('-S', '--start-offset', type=int, help='download skip the first n bytes', default=0)
 args = parser.parse_args()
 
@@ -119,9 +163,12 @@ print(f"Selected quality: {selected_quality}")
 
 # download url
 if not args.title:
-    args.title = parsed_data['title'].replace('/', '|')
+    args.title = sanitize_filename(parsed_data['title'])
 
+if not os.path.exists(args.output_dir):
+    os.makedirs(args.output_dir, exist_ok=True)
 output_file = os.path.join(args.output_dir, args.title + '.mp4')
+
 print(f"Download to: {output_file}")
 if os.path.exists(output_file):
     print('File already exists')
@@ -130,5 +177,4 @@ if os.path.exists(output_file):
         print('Download aborted')
         exit(0)
     
-download_file_in_chunks(selected_url, output_file=output_file, chunk_size=args.chunck_size)
-print('Download completed')
+download_file_in_chunks(selected_url, output_file=output_file, chunk_size=args.chunck_size, max_threads=args.thread_number)

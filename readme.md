@@ -14,24 +14,28 @@ pip install -r requirements.txt
 
 ```shell
 python deovr-dl.py -u https://deovr.com/oraehm
+python deovr-dl.py -O ./output -u https://deovr.com/oraehm       # specify output dir
+python deovr-dl.py -O ./output -u https://deovr.com/oraehm -n 6  # download with 6 threads
 ```
 
 help:
 
 ```shell
-usage: deovr-dl.py [-h] [-u URL] [-O OUTPUT_DIR] [-t TITLE] [-c CODE] [-C CHUNCK_SIZE]
+usage: deovr-dl.py [-h] [-u URL] [-O OUTPUT_DIR] [-t TITLE] [-n THREAD_NUMBER] [-c CODE] [-C CHUNCK_SIZE]
 
 Download url from deovr
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
-  -u URL, --url URL     URL of deovr web page
+  -u URL, --url URL     URL of video page
   -O OUTPUT_DIR, --output-dir OUTPUT_DIR
                         Output file dir
   -t TITLE, --title TITLE
-                        filename = <title>.mp4
-  -c CODE, --code CODE  select codec
+                        Used to construct filename. If not set, parse title from web
+  -n THREAD_NUMBER, --thread-number THREAD_NUMBER
+                        parallel download threads, default 6
+  -c CODE, --code CODE  Select video codec, e.g h264, h265
   -C CHUNCK_SIZE, --chunck-size CHUNCK_SIZE
-                        Download in chunks of n bytes
+                        Download in chunks of n bytes, default 25 MiB
 
 ```
