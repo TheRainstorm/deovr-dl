@@ -26,18 +26,18 @@ def parse_web(url):
     # find script contains videoData
     video_data_script = None
     for script in script_tags:
-        if 'window.vrPlayerSettings' in script.string:
+        if 'videoData' in script.string:
             video_data_script = script.string
-        break
+            break
     
     if not video_data_script:
-        print('No script tag with window.vrPlayerSettings found')
+        print('No script tag with videoData found')
         return False, None
 
     # extract videoData object
     match = re.search(r'videoData\s*:\s*(.*),\n', video_data_script)
     if not match:
-        print('videoData not found')
+        print('videoData parsing failed')
         return False, None
 
     video_data_json = match.group(1)
@@ -51,6 +51,10 @@ def parse_web(url):
     return True,parsed_data
 
 def download_chunk(tid, result_queue, shared_data, lock):
+    headers = {
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36 Edg/127.0.0.0'
+    }
+    
     while True:
         with lock:
             start = shared_data['start']
@@ -61,7 +65,7 @@ def download_chunk(tid, result_queue, shared_data, lock):
         end = start + shared_data['chunk_size'] - 1
         print(f"Thread {tid}: Downloading bytes {start:,}-{end:,}")
         
-        chunk_headers = shared_data['headers'].copy()
+        chunk_headers = headers.copy()
         chunk_headers['Range'] = f'bytes={start}-{end}'
         response = requests.get(shared_data['url'], headers=chunk_headers, stream=True)
 
@@ -88,23 +92,7 @@ def download_chunk(tid, result_queue, shared_data, lock):
     print(f'Thread {tid} finished')
 
 def download_file_in_chunks(url, start_offset=0, chunk_size=100 * 1024 * 1024, output_file='output.mp4', max_threads=4):
-    headers = {
-        'accept': '*/*',
-        'accept-language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7,en-GB;q=0.6,es;q=0.5,pt;q=0.4',
-        'origin': 'https://deovr.com',
-        'priority': 'i',
-        'referer': 'https://deovr.com/',
-        'sec-ch-ua': '"Not)A;Brand";v="99", "Microsoft Edge";v="127", "Chromium";v="127"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
-        'sec-fetch-dest': 'video',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'same-site',
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36 Edg/127.0.0.0'
-    }
-    
     shared_data = {
-        'headers': headers,
         'url': url,
         'chunk_size': chunk_size,
         'start': 0,
