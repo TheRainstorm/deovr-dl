@@ -13,19 +13,20 @@ def parse_web(url):
     
     soup = BeautifulSoup(response.text, 'lxml')
 
-    # 查找包含 videoData 的 <script> 标签
     script_tags = soup.find_all('script', type='text/javascript')
     
+    # find script contains videoData
     video_data_script = None
     for script in script_tags:
         if 'window.vrPlayerSettings' in script.string:
             video_data_script = script.string
         break
+    
     if not video_data_script:
-        print('No script with window.vrPlayerSettings found')
+        print('No script tag with window.vrPlayerSettings found')
         return False, None
 
-    # 提取 videoData 对象
+    # extract videoData object
     match = re.search(r'videoData\s*:\s*(.*),\n', video_data_script)
     if not match:
         print('videoData not found')
@@ -35,18 +36,16 @@ def parse_web(url):
     video_data = json.loads(video_data_json)
     # print(json.dumps(video_data, indent=4))
     
-    data = {
+    parsed_data = {
         'title': video_data['title'],
         'src': video_data['src'],
     }
-    return True,data
+    return True,parsed_data
 
 def download_file_in_chunks(url, start_offset=0, chunk_size=100 * 1024 * 1024, output_file='output.mp4'):
-    # 设置所需的 headers
     headers = {
         'accept': '*/*',
         'accept-language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7,en-GB;q=0.6,es;q=0.5,pt;q=0.4',
-        # 'if-range': '1e89850766e6fa34857d3af851df8f29',
         'origin': 'https://deovr.com',
         'priority': 'i',
         'referer': 'https://deovr.com/',
@@ -59,7 +58,7 @@ def download_file_in_chunks(url, start_offset=0, chunk_size=100 * 1024 * 1024, o
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36 Edg/127.0.0.0'
     }
 
-    # 获取文件总大小
+    # get video file total size
     total_size = 100 * 1024**3 # 100GB, impossible to get the real size
     # response = requests.head(url, headers=headers)
     # total_size = int(response.headers.get('content-length', 0))
@@ -77,7 +76,7 @@ def download_file_in_chunks(url, start_offset=0, chunk_size=100 * 1024 * 1024, o
                 f.write(response.content)
                 print(f'Downloaded bytes {start}-{end}')
             elif response.status_code == 416:
-                print("Dnd chunk")
+                print("Final chunk")
                 range_header = f'bytes={start}-'
                 chunk_headers = headers.copy()
                 chunk_headers['Range'] = range_header
@@ -90,10 +89,10 @@ def download_file_in_chunks(url, start_offset=0, chunk_size=100 * 1024 * 1024, o
                 print('Error: HTTP response code', response.status_code)
                 break
 
-parser = argparse.ArgumentParser(description='Download a file in chunks')
+parser = argparse.ArgumentParser(description='Download url from deovr')
 parser.add_argument('-u', '--url', help='URL of deovr web page')
-parser.add_argument('-o', '--output-dir', default='/mnt/Disk1/WebDL/deovr', help='Output file dir')
-parser.add_argument('-t', '--title', default='', help='Output filename')
+parser.add_argument('-O', '--output-dir', default='./', help='Output file dir')
+parser.add_argument('-t', '--title', default='', help='filename = <title>.mp4')
 
 parser.add_argument('-c', '--code', default='h264', help='select codec')
 
@@ -105,7 +104,7 @@ success, parsed_data = parse_web(args.url)
 if not success:
     print('Failed to parse web')
     exit(-1)
-print(f"title: {parsed_data['title']}")
+print(f"Title: {parsed_data['title']}")
 
 # get url
 filter_url = []
@@ -123,5 +122,7 @@ if not args.title:
     args.title = parsed_data['title']
 
 output_file = os.path.join(args.output_dir, args.title + '.mp4')
+print(f"Download to: {output_file}")
 
 download_file_in_chunks(selected_url, output_file=output_file, chunk_size=args.chunck_size)
+print('Download completed')
