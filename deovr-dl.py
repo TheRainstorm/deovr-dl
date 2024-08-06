@@ -119,7 +119,7 @@ print(f"Selected quality: {selected_quality}")
 
 # download url
 if not args.title:
-    args.title = parsed_data['title']
+    args.title = parsed_data['title'].replace('/', '|')
 
 output_file = os.path.join(args.output_dir, args.title + '.mp4')
 print(f"Download to: {output_file}")
