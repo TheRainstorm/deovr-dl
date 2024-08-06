@@ -64,7 +64,7 @@ def download_file_in_chunks(url, start_offset=0, chunk_size=100 * 1024 * 1024, o
     # total_size = int(response.headers.get('content-length', 0))
     # print('Total file size:', total_size)
 
-    with open(output_file, 'ab') as f:
+    with open(output_file, 'wb') as f:
         for start in range(start_offset, total_size, chunk_size):
             end = min(start + chunk_size - 1, total_size - 1)
             range_header = f'bytes={start}-{end}'
@@ -123,6 +123,12 @@ if not args.title:
 
 output_file = os.path.join(args.output_dir, args.title + '.mp4')
 print(f"Download to: {output_file}")
-
+if os.path.exists(output_file):
+    print('File already exists')
+    overwrite = input('Do you want to overwrite it? (y/n): ')
+    if overwrite.lower() != 'y':
+        print('Download aborted')
+        exit(0)
+    
 download_file_in_chunks(selected_url, output_file=output_file, chunk_size=args.chunck_size)
 print('Download completed')

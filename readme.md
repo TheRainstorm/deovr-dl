@@ -13,13 +13,13 @@ pip install -r requirements.txt
 ```
 
 ```shell
-python deovr_downloader.py -u https://deovr.com/oraehm
+python deovr-dl.py -u https://deovr.com/oraehm
 ```
 
 help:
 
 ```shell
-usage: deovr_downloader.py [-h] [-u URL] [-O OUTPUT_DIR] [-t TITLE] [-c CODE] [-C CHUNCK_SIZE]
+usage: deovr-dl.py [-h] [-u URL] [-O OUTPUT_DIR] [-t TITLE] [-c CODE] [-C CHUNCK_SIZE]
 
 Download url from deovr
 
