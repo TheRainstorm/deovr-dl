@@ -1,6 +1,7 @@
 import threading
 import queue
 import os
+import time
 import requests
 import argparse
 from bs4 import BeautifulSoup
@@ -88,6 +89,7 @@ def download_chunk(tid, result_queue, shared_data, lock):
     print(f'Thread {tid} finished')
 
 def download_file_in_chunks(url, start_offset=0, chunk_size=100 * 1024 * 1024, output_file='output.mp4', max_threads=4):
+    tic = time.time()
     shared_data = {
         'url': url,
         'chunk_size': chunk_size,
@@ -114,7 +116,10 @@ def download_file_in_chunks(url, start_offset=0, chunk_size=100 * 1024 * 1024, o
             # print(f'Thread {tid}: Downloaded bytes {start}-{start + len(chunk) - 1}')
             f.seek(start)
             f.write(chunk)
+    toc = time.time()
+    speed = shared_data['total_size'] / (toc - tic)
     print(f"Download completed: {shared_data['total_size']:,}|{shared_data['total_size']/1024**2:.2f} MiB")
+    print(f"Elapsed time: {seconds_to_hms(int(toc - tic))} Speed: {speed/1024**2:.2f} MiB/s")
 
 def seconds_to_hms(seconds):
     hours = seconds // 3600
