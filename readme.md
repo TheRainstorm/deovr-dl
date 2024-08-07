@@ -17,16 +17,17 @@ python deovr-dl.py -u https://deovr.com/oraehm          # download best quality 
 python deovr-dl.py -O ./output -u https://deovr.com/oraehm       # specify output dir
 python deovr-dl.py -u https://deovr.com/oraehm -F       # list all available format
 python deovr-dl.py -u https://deovr.com/oraehm -f 0     # select format by index
+python deovr-dl.py -O ./output -u https://deovr.com/oraehm -n 6  # specify thread number
 ```
 
 help:
 
 ```shell
-usage: deovr-dl.py [-h] [-u URL] [-O OUTPUT_DIR] [-t TITLE] [-y] [-F] [-c ENCODING [ENCODING ...]] [-f SELECT_FORMAT_IDX]
+usage: deovr-dl.py [-h] [-u URL] [-O OUTPUT_DIR] [-t TITLE] [-y] [-F] [-c ENCODING [ENCODING ...]] [-f SELECT_FORMAT_IDX] [-n THREAD_NUMBER] [-C CHUNCK_SIZE]
 
 Download url from deovr
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   -u URL, --url URL     URL of video page
   -O OUTPUT_DIR, --output-dir OUTPUT_DIR
@@ -39,5 +40,9 @@ optional arguments:
                         filter selected encoding
   -f SELECT_FORMAT_IDX, --select-format-idx SELECT_FORMAT_IDX
                         select format by index. If not set, select the best quality with filted encoding
+  -n THREAD_NUMBER, --thread-number THREAD_NUMBER
+                        parallel download threads, 0 for original downloader
+  -C CHUNCK_SIZE, --chunck-size CHUNCK_SIZE
+                        Download in chunks of n bytes, default 20 MiB
 
 ```
