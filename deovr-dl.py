@@ -137,7 +137,7 @@ parser.add_argument('-c', '--encoding', nargs='+', default='h264', help='filter 
 parser.add_argument('-f', '--select-format-idx', type=int, help='select format by index. If not set, select the best quality with filted encoding')
 
 parser.add_argument('-C', '--chunck-size', type=int,  default=25*1024**2, help='Download in chunks of n bytes, default 25 MiB')
-# parser.add_argument('-S', '--start-offset', type=int, help='download skip the first n bytes', default=0)
+parser.add_argument('-y', '--overwrite', action="store_true", help='overwrite exist')
 args = parser.parse_args()
 
 success, parsed_data = parse_web(args.url)
@@ -164,7 +164,12 @@ if not args.select_format_idx:
 else:
     selected_src = src_list[args.select_format_idx]
 selected_url = selected_src['url']
-print(f"Selected quality: {selected_src['quality']}")
+
+print(f"\n**** Downloader Param:")
+print(f"** Thread num: {args.thread_number}")
+print(f"** Chunksize: {args.chunck_size:,}")
+print(f"** Select encoding: {selected_src['encoding']}")
+print(f"** Selected quality: {selected_src['quality']}")
 
 # download url
 if not args.title:
@@ -177,9 +182,8 @@ output_file = os.path.join(args.output_dir, args.title + '.mp4')
 print(f"Download to: {output_file}")
 if os.path.exists(output_file):
     print('File already exists')
-    overwrite = input('Do you want to overwrite it? (y/n): ')
-    if overwrite.lower() != 'y':
-        print('Download aborted')
+    if not args.overwrite:
+        print('Add -y to overwrite. \nExit')
         exit(0)
     
 download_file_in_chunks(selected_url, output_file=output_file, chunk_size=args.chunck_size, max_threads=args.thread_number)
