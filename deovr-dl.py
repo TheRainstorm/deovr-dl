@@ -72,7 +72,7 @@ def download_chunk(tid, result_queue, shared_data, lock):
                 finished = True
             shared_data['start'] = end + 1
         
-        print(f"Thread {tid}: Downloading bytes {start:,}-{end:,}")
+        print(f"Thread {tid}: Downloading bytes {start:,}\t\t{end+1:,}")
         
         response = download_chunk_helper(shared_data['url'], start, end)
 
@@ -143,7 +143,7 @@ parser.add_argument('-F', '--list-format', action="store_true", help='list all a
 parser.add_argument('-c', '--encoding', nargs='+', default='h264', help='filter selected encoding')
 parser.add_argument('-f', '--select-format-idx', type=int, help='select format by index. If not set, select the best quality with filted encoding')
 
-parser.add_argument('-C', '--chunck-size', type=int,  default=25*1024**2, help='Download in chunks of n bytes, default 25 MiB')
+parser.add_argument('-C', '--chunck-size', type=int,  default=20*1024**2, help='Download in chunks of n bytes, default 25 MiB')
 parser.add_argument('-y', '--overwrite', action="store_true", help='overwrite exist')
 args = parser.parse_args()
 
@@ -184,7 +184,7 @@ if not args.title:
 
 if not os.path.exists(args.output_dir):
     os.makedirs(args.output_dir, exist_ok=True)
-output_file = os.path.join(args.output_dir, args.title + '.mp4')
+output_file = os.path.join(args.output_dir, f"{args.title} - {selected_src['encoding']} {selected_src['quality']}.mp4")
 
 print(f"Download to: {output_file}")
 if os.path.exists(output_file):
