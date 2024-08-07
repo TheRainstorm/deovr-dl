@@ -57,21 +57,12 @@ def download_chunk_helper(url, start, end):
     response = requests.get(url, headers=chunk_headers, stream=True)
     return response
 
-def download_chunk(tid, result_queue, shared_data, lock):
-    finished = False
-    while not finished:
+def download_chunk(tid, result_queue, shared_data, lock, task_queue):
+    while True:
         with lock:
-            start = shared_data['start']
-            if start >= shared_data['total_size']:
+            if task_queue.empty():
                 break
-            end = min(start + shared_data['chunk_size'] - 1, shared_data['total_size'] - 1)
-            # avoid last chunk too small
-            remaining = shared_data['total_size'] - (end + 1)  # left open, right close
-            if remaining < 0.2*shared_data['chunk_size']:
-                end = shared_data['total_size'] - 1
-                finished = True
-            shared_data['start'] = end + 1
-        
+            start, end = task_queue.get()
         print(f"Thread {tid}: Downloading bytes {start:,}\t\t{end+1:,}")
         
         response = download_chunk_helper(shared_data['url'], start, end)
@@ -84,7 +75,7 @@ def download_chunk(tid, result_queue, shared_data, lock):
     result_queue.put((tid, -1, None))
     print(f'Thread {tid} finished')
 
-def download_file_in_chunks(url, start_offset=64, chunk_size=100 * 1024 * 1024, output_file='output.mp4', max_threads=4):
+def download_file_in_chunks(url, start_offset=64, chunk_size=100 * 1024 * 1024, output_file='output.mp4', recover_file="", max_threads=4):
     tic = time.time()
     f = open(output_file, 'wb')
     # get total size
@@ -92,18 +83,21 @@ def download_file_in_chunks(url, start_offset=64, chunk_size=100 * 1024 * 1024, 
     total_size = int(response.headers.get('Content-Range').split('/')[-1])
     f.write(response.content)
     
+    task_queue = queue.Queue()
+    for start in range(start_offset, total_size, chunk_size):
+        end = min(start + chunk_size - 1, total_size - 1)
+        task_queue.put((start, end))
+    
     shared_data = {
         'url': url,
         'chunk_size': chunk_size,
-        'start': 0,
         'total_size': total_size
     }
-    
     lock = threading.Lock()
 
     result_queue = queue.Queue()
     for i in range(max_threads):
-        t = threading.Thread(target=download_chunk, args=(i, result_queue, shared_data, lock))
+        t = threading.Thread(target=download_chunk, args=(i, result_queue, shared_data, lock, task_queue))
         t.start()
     
     count_finished = 0
@@ -184,7 +178,9 @@ if not args.title:
 
 if not os.path.exists(args.output_dir):
     os.makedirs(args.output_dir, exist_ok=True)
-output_file = os.path.join(args.output_dir, f"{args.title} - {selected_src['encoding']} {selected_src['quality']}.mp4")
+filename = f"{args.title} - {selected_src['encoding']} {selected_src['quality']}"
+output_file = os.path.join(args.output_dir, f"{filename}.mp4")
+recover_file = os.path.join(args.output_dir, f"{filename}.recover")
 
 print(f"Download to: {output_file}")
 if os.path.exists(output_file):
@@ -193,4 +189,4 @@ if os.path.exists(output_file):
         print('Add -y to overwrite. \nExit')
         exit(0)
     
-download_file_in_chunks(selected_url, output_file=output_file, chunk_size=args.chunck_size, max_threads=args.thread_number)
+download_file_in_chunks(selected_url, output_file=output_file, recover_file=recover_file, chunk_size=args.chunck_size, max_threads=args.thread_number)
