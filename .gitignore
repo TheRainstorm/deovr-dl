@@ -1,4 +1,4 @@
 *.html
 test.py
-test.json
+*.json
 *.mp4

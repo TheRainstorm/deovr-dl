@@ -6,6 +6,24 @@ import requests
 import argparse
 import re
 import json
+import re
+
+def parseCookieFile(cookie_file) -> dict:
+    ''' parseCookieFile function used to convert
+        NetScape cookies file into a dictionary '''
+    # https://gist.github.com/h3ssan/28196d1b4361b96b9358e844e5bb5cf0
+    
+    cookies = {}
+    with open (cookie_file) as file:
+        for line in file:
+            if not re.match(r'^\#', line):
+                lineFields = line.strip().split('\t')
+                try:
+                    cookies[lineFields[5]] = lineFields[6]
+                except IndexError:
+                    pass
+    
+    return cookies
 
 def sanitize_filename(filename):
     # windows forbidden characters
@@ -17,7 +35,7 @@ def parse_web(url):
     headers = {
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36 Edg/127.0.0.0'
     }
-    response = requests.get(url, headers=headers)
+    response = session.get(url, headers=headers)
 
     # extract videoData object
     match = re.search(r'videoData\s*:\s*(.*),\n', response.text)
@@ -39,7 +57,7 @@ def download_chunk_helper(url, start, end, stream=True):
     range_header = f'bytes={start}-{end}'
     chunk_headers = headers.copy()
     chunk_headers['Range'] = range_header
-    response = requests.get(url, headers=chunk_headers, stream=stream, timeout=(10, 5))  # set timeout, so don't hang long time
+    response = session.get(url, headers=chunk_headers, stream=stream, timeout=(10, 5))  # set timeout, so don't hang long time
     return response
 
 def print_speed(seconds, total_size):
@@ -186,14 +204,21 @@ parser.add_argument('-u', '--url', help='URL of video page')
 parser.add_argument('-O', '--output-dir', default='./', help='Output file dir')
 parser.add_argument('-t', '--title', default='', help='Used to construct filename. If not set, parse title from web')
 parser.add_argument('-y', '--overwrite', action="store_true", help='overwrite exist')
+parser.add_argument('-C', '--cookie-file', default='', help='cookie file')
 # format select
 parser.add_argument('-F', '--list-format', action="store_true", help='list all available format')
-parser.add_argument('-c', '--encoding', nargs='+', default='h264', help='filter selected encoding')
+parser.add_argument('-c', '--encoding', nargs='+', default='h264', help='filter selected encoding. e.g -c h264 h265, default only h264')
 parser.add_argument('-f', '--select-format-idx', type=int, help='select format by index. If not set, select the best quality with filted encoding')
 
 parser.add_argument('-n', '--thread-number', type=int, default=0, help='parallel download threads, 0 for original downloader')
-parser.add_argument('-C', '--chunk-size', type=int,  default=20*1024**2, help='Download in chunks of n bytes, default 20 MiB')
+parser.add_argument('-S', '--chunk-size', type=int,  default=20*1024**2, help='Download in chunks of n bytes, default 20 MiB')
 args = parser.parse_args()
+
+cookies = {}
+if args.cookie_file:
+    cookies = parseCookieFile(args.cookie_file)
+session = requests.Session()
+session.cookies.update(cookies)
 
 # get video data
 success, video_data = parse_web(args.url)
