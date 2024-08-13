@@ -2,3 +2,5 @@
 test.py
 *.json
 *.mp4
+*.tmp
+*.pyc
