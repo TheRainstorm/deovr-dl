@@ -55,6 +55,7 @@ class DeoVR_DL:
 
         parser.add_argument('-n', '--thread-number', type=int, default=0, help='parallel download threads, 0 for original downloader')
         parser.add_argument('-K', '--chunk-size', type=int,  default=20*1024**2, help='Download in chunks of n bytes, default 20 MiB')
+        parser.add_argument('-R', '--failed-repeat', type=int,  default=1, help='download failed repeat times')
         
         # hosting mode
         parser.add_argument('-H', '--hosting-mode', action="store_true", help='normal mode: download single video. Hosting mode: download and organize')
@@ -287,7 +288,11 @@ class DeoVR_DL:
         self.download_others(video_json, dump_json, video_title_id, thumbnail_dir, preview_dir, seeklookup_dir)
         
         # download video
-        video_path = self.download_video(video_title_id, playlist_dir, selected_src)
+        video_path, succ = self.download_video(video_title_id, playlist_dir, selected_src)
+        if not succ:
+            print(f"Download Video failed, skip")
+            return
+        
         # modify url
         url_path = urllib.parse.quote(os.path.relpath(video_path, self.output_dir))
         selected_src['url'] = f"{self.server}/{url_path}"
@@ -308,6 +313,7 @@ class DeoVR_DL:
         self.add_to_top_json(playlist, single_json_data, video_title_id)
        
     def download_video(self, video_title_id, output_dir, selected_src):
+        succ = True
         filename = f"{video_title_id} - {selected_src['encoding']} {selected_src['quality']}"
         output_file = os.path.join(output_dir, f"{filename}.mp4")
         output_tmp_file = os.path.join(output_dir, f"{filename}.mp4.tmp")
@@ -327,25 +333,28 @@ class DeoVR_DL:
                 os.remove(output_file)
             else:
                 print(f"Video file exists, skip")
-                return output_file
+                return output_file, succ
+        
         
         if self.args.thread_number == 0:
-            download_file(self.session, selected_src['url'], output_file, print_info=True)
+            succ = download_file(self.session, selected_src['url'], output_file, print_info=True, repeat=self.args.failed_repeat)
         else:
-            success = download_file_in_chunks(self.session, selected_src['url'], output_file=output_tmp_file, recover_file=recover_file, max_threads=self.args.thread_number, chunk_size=self.args.chunk_size)
-            if success:
+            succ = download_file_in_chunks(self.session, selected_src['url'], output_file=output_tmp_file, recover_file=recover_file, \
+                max_threads=self.args.thread_number, chunk_size=self.args.chunk_size, repeat=self.args.failed_repeat)
+            if succ:
                 print('Download successed')
                 os.rename(output_tmp_file, output_file)
                 print(f"File size: {os.path.getsize(output_file):,} bytes")
             else:
                 print('Download failed, run again to recover')
-        return output_file
+        return output_file, succ
     
     def download_others(self, video_json, dump_json, video_title_id, thumbnail_dir, preview_dir, seeklookup_dir):
+        repeat = self.args.failed_repeat
         # The field ‘thumbnailUrl’ should contain the link to the file with the image shown in the list. This field is required in case of using the list.
         output_path = os.path.join(thumbnail_dir, f"{video_title_id}_thumbnail.jpg")
         if not os.path.exists(output_path):
-            download_file(self.session, video_json['thumbnailUrl'], output_path)
+            download_file(self.session, video_json['thumbnailUrl'], output_path, repeat=repeat)
         url_path = urllib.parse.quote(os.path.relpath(output_path, self.output_dir))
         dump_json['thumbnailUrl'] = f"{self.server}/{url_path}"
         
@@ -353,7 +362,7 @@ class DeoVR_DL:
         if 'videoPreview' in video_json:
             output_path = os.path.join(preview_dir, f"{video_title_id}_preview.mp4")
             if not os.path.exists(output_path):
-                download_file(self.session, video_json['videoPreview'], output_path)
+                download_file(self.session, video_json['videoPreview'], output_path, repeat=repeat)
             url_path = urllib.parse.quote(os.path.relpath(output_path, self.output_dir))
             dump_json['videoPreview'] = f"{self.server}/{url_path}"
         
@@ -361,7 +370,7 @@ class DeoVR_DL:
         if 'videoThumbnail' in video_json:
             output_path = os.path.join(seeklookup_dir, f"{video_title_id}_seek.mp4")
             if not os.path.exists(output_path):
-                download_file(self.session, video_json['videoThumbnail'], output_path)
+                download_file(self.session, video_json['videoThumbnail'], output_path, repeat=repeat)
             url_path = urllib.parse.quote(os.path.relpath(output_path, self.output_dir))
             dump_json['videoThumbnail'] =f"{self.server}/{url_path}"
 

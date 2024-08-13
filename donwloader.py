@@ -27,24 +27,37 @@ def print_speed(seconds, total_size):
     print(f"Downloaded {total_size:,} bytes")
     print(f"Elapsed time: {seconds_to_hms(seconds)} Speed: {speed/1024**2:.2f} MiB/s")
     
-def download_file(session, url, output_file='output.mp4', print_info=False):
+def download_file(session, url, output_file='output.mp4', print_info=False, repeat=1):
     '''donwload file single thread
     '''
-    tic = time.time()
-    response = download_chunk_helper(session, url, 0, -1)
-    with open(output_file, 'wb') as f:
-        for chunk in response.iter_content(chunk_size=1024**2):
-            if chunk:
-                f.write(chunk)
-                downloaded_bytes = f.tell()
-                if print_info:
-                    print(f"Downloaded {downloaded_bytes:,} bytes avg: {downloaded_bytes/(time.time()-tic)/1024**2:4.2f} MiB/s", end='\r')
-        total_size = f.tell()
-    if print_info:
-        print_speed(time.time() - tic, total_size)
+    while True:
+        repeat -= 1
+        try:
+            tic = time.time()
+            response = download_chunk_helper(session, url, 0, -1)
+            with open(output_file, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=1024**2):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded_bytes = f.tell()
+                        if print_info:
+                            print(f"Downloaded {downloaded_bytes:,} bytes avg: {downloaded_bytes/(time.time()-tic)/1024**2:4.2f} MiB/s", end='\r')
+                total_size = f.tell()
+            if print_info:
+                print_speed(time.time() - tic, total_size)
+            
+            return True
+        except KeyboardInterrupt:
+            print("KeyboardInterrupt")
+            os.path.remove(output_file)
+            return False
+        except Exception as e:
+            print(f"Exception {e}, repeat {repeat}")
+            if repeat <= 0:
+                return False
 
 stop_event = threading.Event()
-def download_chunk(session, tid, result_queue, shared_data, lock, task_queue):
+def download_chunk_thread(session, tid, result_queue, shared_data, lock, task_queue, repeat=1):
     while not stop_event.is_set():
         with lock:
             if task_queue.empty():
@@ -52,21 +65,26 @@ def download_chunk(session, tid, result_queue, shared_data, lock, task_queue):
             chunk_id, start, end = task_queue.get()
         print(f"{f'Thread {tid}: Downloading chunck':<30s} {chunk_id:3d}/{shared_data['chunk_num']:<3d}")
         
-        try:
-            response = download_chunk_helper(session, shared_data['url'], start, end)
-            if response.status_code == 206:
-                result_queue.put((tid, chunk_id, start, response.content))
-            else:
-                print(f'Thread {tid} Error: HTTP response code {response.status_code}, downloading {start:,}-{end:,}')
-                result_queue.put((tid, chunk_id, -2, None))
-        except Exception as e:
-            print(f'Thread {tid} Exception {e}, downloading {start:,}-{end:,}')
-            result_queue.put((tid, chunk_id, -2, None))
+        while not stop_event.is_set():
+            repeat -= 1
+            try:
+                response = download_chunk_helper(session, shared_data['url'], start, end)
+                if response.status_code == 206:
+                    result_queue.put((tid, chunk_id, start, response.content))
+                else:
+                    print(f'Thread {tid} Error: HTTP response code {response.status_code}, downloading {chunk_id} {start:,}-{end:,}')
+                    result_queue.put((tid, chunk_id, -2, None))
+                break
+            except Exception as e:
+                print(f'Thread {tid} Exception {e}, downloading {chunk_id}, repeat {repeat}')
+                if repeat<= 0:
+                    result_queue.put((tid, chunk_id, -2, None))
+                    break
         
     result_queue.put((tid, -1, -1, None))
     print(f'Thread {tid} finished')
 
-def download_file_in_chunks(session, url, start_offset=64, chunk_size=100 * 1024 * 1024, output_file='output.mp4', recover_file="", max_threads=4):
+def download_file_in_chunks(session, url, start_offset=64, chunk_size=100 * 1024 * 1024, output_file='output.mp4', recover_file="", max_threads=4, repeat=1):
     '''donwload file multi thread
     '''
     tic = time.time()
@@ -79,7 +97,17 @@ def download_file_in_chunks(session, url, start_offset=64, chunk_size=100 * 1024
     
     out_file = open(output_file, 'wb' if not recover_mode else 'r+b')
     # get total size
-    response = download_chunk_helper(session, url, 0, start_offset-1)
+    repeat_t = repeat
+    while True:
+        repeat_t -= 1
+        try:
+            response = download_chunk_helper(session, url, 0, start_offset-1)
+            break
+        except Exception as e:
+            if repeat_t <= 0:
+                print(f"Get total size failed")
+                print(f"Exception {e}, repeat {repeat}")
+                return False
     total_size = int(response.headers.get('Content-Range').split('/')[-1])
     out_file.write(response.content)
     
@@ -105,7 +133,7 @@ def download_file_in_chunks(session, url, start_offset=64, chunk_size=100 * 1024
     result_queue = queue.Queue()
     threads = []
     for i in range(max_threads):
-        t = threading.Thread(target=download_chunk, args=(session, i, result_queue, shared_data, lock, task_queue))
+        t = threading.Thread(target=download_chunk_thread, args=(session, i, result_queue, shared_data, lock, task_queue, repeat))
         t.start()
         threads.append(t)
     
