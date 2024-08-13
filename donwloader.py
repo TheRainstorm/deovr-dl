@@ -5,6 +5,7 @@ import threading
 import time
 
 def seconds_to_hms(seconds):
+    seconds = int(seconds)
     hours = seconds // 3600
     minutes = (seconds % 3600) // 60
     secs = seconds % 60
@@ -26,7 +27,7 @@ def print_speed(seconds, total_size):
     print(f"Downloaded {total_size:,} bytes")
     print(f"Elapsed time: {seconds_to_hms(seconds)} Speed: {speed/1024**2:.2f} MiB/s")
     
-def download_file(session, url, output_file='output.mp4'):
+def download_file(session, url, output_file='output.mp4', print_info=False):
     '''donwload file single thread
     '''
     tic = time.time()
@@ -36,9 +37,11 @@ def download_file(session, url, output_file='output.mp4'):
             if chunk:
                 f.write(chunk)
                 downloaded_bytes = f.tell()
-                print(f"Downloaded {downloaded_bytes:,} bytes avg: {downloaded_bytes/(time.time()-tic)/1024**2:4.2f} MiB/s", end='\r')
+                if print_info:
+                    print(f"Downloaded {downloaded_bytes:,} bytes avg: {downloaded_bytes/(time.time()-tic)/1024**2:4.2f} MiB/s", end='\r')
         total_size = f.tell()
-    print_speed(time.time() - tic, total_size)
+    if print_info:
+        print_speed(time.time() - tic, total_size)
 
 stop_event = threading.Event()
 def download_chunk(session, tid, result_queue, shared_data, lock, task_queue):
