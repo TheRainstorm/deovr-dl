@@ -1,6 +1,7 @@
 from datetime import datetime
 import urllib.parse
 import os
+from lxml import html
 import requests
 import argparse
 import re
@@ -48,13 +49,14 @@ class DeoVR_DL:
         parser.add_argument('-C', '--cookie-file', default='', help='cookie file')
         # format select
         parser.add_argument('-F', '--list-format', action="store_true", help='list all available format')
-        parser.add_argument('-c', '--encoding', nargs='+', default='h264', help='filter selected encoding. e.g -c h264 h265, default only h264')
+        parser.add_argument('-c', '--encoding', nargs='+', default='h265', help='filter selected encoding. e.g -c h264 h265, default only h265')
         parser.add_argument('-f', '--select-format-idx', type=int, default=-1, help='select format by index. If not set, select the best quality with filted encoding')
+        parser.add_argument('-L', '--skip-policy', type=int, default=0, help="0: same res and encoding, 1: same encoding, 2: same title (diff encoding & res)")
 
         parser.add_argument('-n', '--thread-number', type=int, default=0, help='parallel download threads, 0 for original downloader')
         parser.add_argument('-K', '--chunk-size', type=int,  default=20*1024**2, help='Download in chunks of n bytes, default 20 MiB')
         
-        # 
+        # hosting mode
         parser.add_argument('-H', '--hosting-mode', action="store_true", help='normal mode: download single video. Hosting mode: download and organize')
         parser.add_argument('-P', '--playlist', default="Library", help='playlist name, default `Library`. If the url is a playlist, the parsed playlist name will be used')
         parser.add_argument('-S', '--server', default="http://localhost:8000", help='HTTP server address hosting the video files')
@@ -97,8 +99,19 @@ class DeoVR_DL:
         elif type == 1:
             self.download_single_video(json_data)
         else:
-            print('Playlist not supported')
-            exit(-1)
+            # download playlist
+            page_num = json_data['page_num']
+            for page in range(1, page_num):
+                print(f"Downloading page {page}/{page_num}")
+                if page == 1:
+                    video_ids = json_data['page_1']
+                else:
+                    video_ids = self.parse_page(self.args.url, page)
+                
+                for i,video_id in enumerate(video_ids):
+                    print(f"Downloading video {i+1}/{len(video_ids)}")
+                    video_json = self.get_video_json_from_id(video_id)
+                    self.download_single_video(video_json)
        
     def parse_web(self, url):
         response = self.session.get(url)
@@ -108,20 +121,34 @@ class DeoVR_DL:
             # extract videoData object
             match = re.search(r'videoData\s*:\s*(.*),\n', response.text)
             if not match:
-                print('videoData parsing failed')
+                # print('videoData parsing failed')
                 return False, None
 
             video_data_json = match.group(1)
             video_data = json.loads(video_data_json)
             # print(json.dumps(video_data, indent=4))
             
-            json_url = f"https://deovr.com/deovr/video/id/{video_data['id']}"
-            video_json = self.session.get(json_url).json()
+            video_json = self.get_video_json_from_id(video_data['id'])
 
             return True, video_json
         
         def try_playlist():
-            return False, None
+            tree = html.fromstring(response.text)
+            page_num = tree.xpath('//*[@id="content"]//div[contains(@class, "c-pagination")]//ul/li[last()]/a/text()')
+            if len(page_num) == 0:
+                # print('Failed to parse page num')
+                return False, None
+            
+            page_num = int(page_num[0])
+            
+            video_ids = self.parse_page(url, 1, response)
+            
+            parsed_data = {
+                'page_num': page_num,
+                'page_1': video_ids
+            }
+            
+            return True, parsed_data
 
         succ, json_data = try_single()
         if succ:
@@ -130,7 +157,20 @@ class DeoVR_DL:
         if succ:
             return 2, json_data
         return -1, None
- 
+    
+    def get_video_json_from_id(self, video_id):
+        return self.session.get(f"https://deovr.com/deovr/video/id/{video_id}").json()
+    
+    def parse_page(self, url, page, response=None):
+        if response is None:
+            response = self.session.get(url, params={'page': page})
+        tree = html.fromstring(response.content)
+        
+        links_with_data_like_id = tree.xpath('//a[@data-like-id]')
+
+        video_ids = [link.get('data-like-id') for link in links_with_data_like_id]
+        return video_ids
+            
     def print_metadata(self, video_json):
         print(f"**** Parsed data:")
         print(f"** Title: {video_json['title']}")
@@ -162,6 +202,8 @@ class DeoVR_DL:
             for s in srcs:
                 src = {}
                 src['encoding'] = e['name']
+                if not s['url']:
+                    continue
                 src['url'] = s['url']
                 src['resolution'] = s['resolution']
                 src['quality'] = f"{s['resolution']}p"
@@ -200,6 +242,10 @@ class DeoVR_DL:
         if self.args.list_format:
             self.print_formats(src_list)
             exit(0)
+        if len(src_list) == 0:
+            print('No available format, skip')
+            return
+        
         selected_src = self.select_format(src_list, encodings=self.args.encoding, select_format_idx=self.args.select_format_idx)
         
         if not self.args.hosting_mode: # just download video
@@ -222,6 +268,20 @@ class DeoVR_DL:
         json_dir = os.path.join(playlist_dir, 'metadata', 'json')
         make_dirs(thumbnail_dir, preview_dir, seeklookup_dir, json_dir, exist_ok=True)
         
+        single_json_path = os.path.join(json_dir, f'{video_title_id}.json')
+        single_json_data = {}
+        if os.path.exists(single_json_path):
+            with open(single_json_path, 'r') as f:
+                single_json_data = json.load(f)
+        if 'encodings' not in single_json_data:
+            single_json_data['encodings'] = []
+        
+        # check exist skip
+        exist_flag = self.add_encoding(single_json_data['encodings'].copy(), selected_src.copy())
+        if exist_flag <= self.args.skip_policy:
+            print(f'Skip this video. exist_flag={exist_flag}, skip_policy={self.args.skip_policy}')
+            return
+        
         # download metadata
         print("Downloading metadata")
         self.download_others(video_json, dump_json, video_title_id, thumbnail_dir, preview_dir, seeklookup_dir)
@@ -232,19 +292,11 @@ class DeoVR_DL:
         url_path = urllib.parse.quote(os.path.relpath(video_path, self.output_dir))
         selected_src['url'] = f"{self.server}/{url_path}"
         
-        single_json_path = os.path.join(json_dir, f'{video_title_id}.json')
-        single_json_data = {}
-        if os.path.exists(single_json_path):
-            with open(single_json_path, 'r') as f:
-                single_json_data = json.load(f)
+        self.add_encoding(single_json_data['encodings'], selected_src)
         
         # self extended key, top playlist json will use it
         dump_json['video_url'] = f"{self.server}/{playlist}/metadata/json/{video_title_id}.json"
         single_json_data.update(dump_json)
-        
-        if 'encodings' not in single_json_data:
-            single_json_data['encodings'] = []
-        self.add_encoding(single_json_data['encodings'], selected_src)
         
         # save json
         print("Save single video json")
@@ -314,19 +366,21 @@ class DeoVR_DL:
             dump_json['videoThumbnail'] =f"{self.server}/{url_path}"
 
     def add_encoding(self, encodings, selected_src):
+        exist_flag = 2
+        if len(encodings) == 0:
+            exist_flag = 3 # not exist same title video
         for e in encodings:
             if e['name'] == selected_src['encoding']:
                 for s in e['videoSources']:
                     if s['resolution'] == selected_src['resolution']:
-                        return # already exists
+                        return 0 # already exists
                 e['videoSources'].append({
                     'url': selected_src['url'],
                     'resolution': selected_src['resolution'],
                     'height': selected_src['height'],
                     'width': selected_src['width']
                 })
-                return # same encoding, new resolution
-        # new encoding
+                return 1 # same encoding, new resolution
         encodings.append({
             'name': selected_src['encoding'],
             'videoSources': [{
@@ -336,7 +390,7 @@ class DeoVR_DL:
                 'width': selected_src['width']
             }]
         })
-        return
+        return exist_flag # new encoding
     
     def read_top_json(self):
         # read playlist json
