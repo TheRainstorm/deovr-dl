@@ -30,7 +30,7 @@ def ffmpeg_probe(file_path):
     }
     return meta_data
 
-def make_thumbnail(video_path, thumbnail_dir, seeklookup_dir, title, meta_data, overwrite=False):
+def make_thumbnail(video_path, thumbnail_dir, seeklookup_dir, title, meta_data):
     thumbnail_file = os.path.join(thumbnail_dir, f"{title}_thumbnail.jpg")
     videoThumbnail_file = os.path.join(seeklookup_dir, f"{title}_seek.mp4")
     
@@ -44,19 +44,23 @@ def make_thumbnail(video_path, thumbnail_dir, seeklookup_dir, title, meta_data, 
         crop_half_str = 'crop=iw:ih/2:0:0,'
         height //= 2
         
-    overwrite_str = '-y' if overwrite else '-n'
+    overwrite_str = '-y' if args.force_thumbnail else '-n'
     
     # thumbnail
     scale_str = f"scale=-1:252,crop=420:252"
     if width / height < 420/252:
         scale_str = f"scale=420:-1,crop=420:252"
     
-    # start = seconds_to_hms(meta_data['duration']//3)
-    cmd = f"ffmpeg -ss 00:00:1 -i '{video_path}' -vframes 1 -q:v 2 -vf '{crop_half_str}{scale_str}' '{thumbnail_file}' {overwrite_str}"
+    if args.thumbnail_start_time >= 0:
+        start = seconds_to_hms(args.thumbnail_start_time)
+    else:
+        start = seconds_to_hms(meta_data['duration']//2)
+    cmd = f"ffmpeg -ss {start} -i '{video_path}' -vframes 1 -q:v 2 -vf '{crop_half_str}{scale_str}' '{thumbnail_file}' {overwrite_str}"
     # print(cmd)
     subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
     print("generating preview video")
+    overwrite_str = '-n'
     # seek preivew video, crop to 330x200
     scale_str = f"scale=-1:200,crop=330:200"
     if width / height < 330/200:
@@ -202,16 +206,17 @@ parser.add_argument('-T', '--root-dir', required=True, help='DeoVR root dir')
 parser.add_argument('-S', '--server', default="http://localhost:8000", help='Old HTTP server address')
 
 parser.add_argument('-P', '--playlist', help='update specific playlist, or scan all playlists')
+parser.add_argument('-V', '--video-file', help='Scan one video')
 
 parser.add_argument('--screenType', default="flat", help='flat, dome(180), sphere(360)')
 parser.add_argument('--stereoMode', default="sbs", help='sbs, tb')
 
+parser.add_argument('-s', '--thumbnail-start-time', type=int, default=-1, help='specific thumbnail shot time. default shot at 1/3 duration')
+parser.add_argument('-F', '--force-thumbnail', action="store_true", help='force regenerate thumbnail')
+
 args = parser.parse_args()
 
 root_dir = args.root_dir
-
-top_json = read_top_json(root_dir)
-current_video_id = get_current_id(top_json)
 
 for playlist in os.listdir(root_dir):
     # skip files
@@ -223,6 +228,10 @@ for playlist in os.listdir(root_dir):
             continue
     print(f"Processing {playlist}")
     
+    # re read current id
+    top_json = read_top_json(root_dir)
+    current_video_id = get_current_id(top_json)
+
     # prepare dir
     thumbnail_dir = os.path.join(playlist_dir, 'metadata', 'thumbnail')
     preview_dir = os.path.join(playlist_dir, 'metadata', 'preview')
@@ -232,7 +241,11 @@ for playlist in os.listdir(root_dir):
     
     # scan playlist_dir
     playlist_video_jsons = []
-    video_files = list(os.listdir(playlist_dir))
+    if args.video_file:
+        video_files = [args.video_file]
+    else:
+        video_files = list(os.listdir(playlist_dir))
+    
     for i, video_file in enumerate(video_files):
         # skip not video files
         video_name, ext = os.path.splitext(video_file)
@@ -280,9 +293,13 @@ for playlist in os.listdir(root_dir):
             
             add_to_top_json(root_dir, playlist, [video_json])
         else:
-            # merge existing json
+            # read existing json
             with open(json_file, 'r') as f:
                 video_json_ori = json.load(f)
+            
+            # update thumbnail
+            if args.force_thumbnail:
+                make_thumbnail(video_path, thumbnail_dir, seeklookup_dir, title, meta_data)
             
             # only update encodings, keep original metadata
             exist_flag = add_encoding(video_json_ori['encodings'], video_json['encodings'][0]['name'], video_json['encodings'][0]['videoSources'][0])

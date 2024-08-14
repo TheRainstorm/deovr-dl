@@ -98,6 +98,8 @@ Sometimes we want to host local VR videos. It's tedious to write JSON by ourselv
 python generate_json.py -T /path/to/deovr/root -S "https://example.com" -P foo
 
 python generate_json.py -T /path/to/deovr/root -S "https://example.com" -P foo --stereoMode='sbs' --screenType='flat' # specific video 3d format
+
+python generate_json.py -T /path/to/deovr/root -S "https://example.com" -P foo -V video_file.mp4 -F -s 3 # force update video thumbnail (specific shot at 3 seconds)
 ```
 
 You will see new playlist and videos are added to deovr top json file, when the script is running.
