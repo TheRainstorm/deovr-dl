@@ -87,6 +87,21 @@ If you change server address, please run script to rewrite json files.
 python replace_server_name.py -T /path/to/deovr/root -S "https://old.example:4433" -R "https://new.example.com"
 ```
 
+## Scan local video
+
+Sometimes we want to host local VR videos. It's tedious to write JSON by ourselves, so there is a script to scan the directory and generate the correct JSON, which will also create thumbnail images and preview videos.
+
+1. Place the directory (e.g., `foo`) containing local videos in the DeoVR root directory.
+2. Run the script with the playlist name identical to the directory name (e.g., `foo`).
+
+```shell
+python generate_json.py -T /path/to/deovr/root -S "https://example.com" -P foo
+
+python generate_json.py -T /path/to/deovr/root -S "https://example.com" -P foo --stereoMode='sbs' --screenType='flat' # specific video 3d format
+```
+
+You will see new playlist and videos are added to deovr top json file, when the script is running.
+
 ## help options
 
 ```shell

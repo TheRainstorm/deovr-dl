@@ -1,8 +1,15 @@
 import json
 import os
 import queue
+import re
 import threading
 import time
+
+def sanitize_filename(filename):
+    # windows forbidden characters
+    forbidden_chars = r'[\\/:"*?<>|]'
+    sanitized = re.sub(forbidden_chars, ' ', filename)
+    return sanitized
 
 def seconds_to_hms(seconds):
     seconds = int(seconds)

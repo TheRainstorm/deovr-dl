@@ -7,7 +7,7 @@ import argparse
 import re
 import json
 import re
-from donwloader import seconds_to_hms, download_file, download_file_in_chunks
+from donwloader import sanitize_filename, seconds_to_hms, download_file, download_file_in_chunks
 from compatibility import get_video_data, get_video_json_from_videoData
 
 def parseCookieFile(cookie_file) -> dict:
@@ -26,12 +26,6 @@ def parseCookieFile(cookie_file) -> dict:
                     pass
     
     return cookies
-
-def sanitize_filename(filename):
-    # windows forbidden characters
-    forbidden_chars = r'[\\/:"*?<>|]'
-    sanitized = re.sub(forbidden_chars, ' ', filename)
-    return sanitized
 
 def make_dirs(*dirs, exist_ok=False):
     for d in dirs:
