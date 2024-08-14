@@ -111,6 +111,22 @@ def create_video_json(playlist, title, video_path, meta_data, screenType="flat",
     
     return video_json
 
+def check_encoding(encodings, encoding, resolution):
+    if len(encodings)==0:
+        return 3 # not exist same title video
+    encoding_index = {}
+    for e in encodings:
+        encoding_index[e['name']] = e
+    
+    if encoding not in encoding_index:
+        # new encoding
+        return 2 # new encoding
+    else:
+        for s in encoding_index[encoding]['videoSources']:
+            if s['resolution'] == resolution:
+                return 0 # already exists
+        return 1 # same encoding, new resolution
+    
 def add_encoding(encodings, encoding, videoSource):
     if len(encodings) == 0:
         encodings.append({
@@ -257,27 +273,35 @@ for playlist in os.listdir(root_dir):
         m = re.search(r'(?P<title>.*?)\ -\ (?P<encoding>\w+)\ (?P<quality>\w+)\.(?P<ext>\w+)', video_file)
         if m:
             title = m.group('title')  # different encoding is seen as same title
+            req_encoding = m.group('encoding')
+            quality = m.group('quality')
+            req_resolution = int(quality[:-1]) # 1080p -> 1080
         else:
             title = video_name
             need_fix_filename = True  # after fixing, it's easy to add new encoding, rather than adding as new title
         print(f"Processing {i+1:3d}/{len(video_files):<3d}\t {title}")
         
-        # crate single video json
+        def probe_and_create(video_path):
+            # probe video: encoding, duration, resolution
+            meta_data = ffmpeg_probe(video_path)
+            
+            if need_fix_filename:
+                video_path_fixed = os.path.join(playlist_dir, f"{title} - {meta_data['encoding']} {meta_data['resolution']}p.mp4")
+                os.rename(video_path, video_path_fixed)
+                video_path = video_path_fixed
+            
+            video_json = create_video_json(playlist, title, video_path, meta_data, screenType=args.screenType, stereoMode=args.stereoMode)
+            
+            return video_path, meta_data, video_json
+        
         video_path = os.path.join(playlist_dir, video_file)
-        # probe video: encoding, duration, resolution
-        meta_data = ffmpeg_probe(video_path)
-        
-        if need_fix_filename:
-            video_path_fixed = os.path.join(playlist_dir, f"{title} - {meta_data['encoding']} {meta_data['resolution']}p.mp4")
-            os.rename(video_path, video_path_fixed)
-            video_path = video_path_fixed
-        
-        video_json = create_video_json(playlist, title, video_path, meta_data, screenType=args.screenType, stereoMode=args.stereoMode)
         
         json_file = os.path.join(root_dir, playlist, 'metadata/json', f"{title}.json")
         if not os.path.exists(json_file):
             print(f"Create New video json: {title}")
             
+            video_path, meta_data, video_json = probe_and_create(video_path)
+        
             # make thumbnail etc.
             thumbnailUrl, videoPreview, videoThumbnail = make_thumbnail(video_path, thumbnail_dir, seeklookup_dir, title, meta_data)
             video_json.update({
@@ -301,21 +325,18 @@ for playlist in os.listdir(root_dir):
             if args.force_thumbnail:
                 make_thumbnail(video_path, thumbnail_dir, seeklookup_dir, title, meta_data)
             
-            # only update encodings, keep original metadata
-            exist_flag = add_encoding(video_json_ori['encodings'], video_json['encodings'][0]['name'], video_json['encodings'][0]['videoSources'][0])
-            if exist_flag==0:
-                print(f"Already exists, skip")
-                playlist_video_jsons.append(video_json_ori)
-                continue
-            else:
-                print(f"Update Json, exist_flag: {exist_flag}")
+            if not need_fix_filename:
+                exist_flag = check_encoding(video_json_ori['encodings'], req_encoding, req_resolution)
+                if exist_flag==0:
+                    print(f"Already exists, skip")
+                    playlist_video_jsons.append(video_json_ori)
+                    continue
             
-            if exist_flag==4:
-                # rename
-                if meta_data['encoding'] != 'h264':
-                    input(f"input to continue")
-                video_path_new = video_path.replace('h265', 'h264')
-                os.rename(video_path, video_path_new)
+            # new encoding
+            video_path, meta_data, video_json = probe_and_create(video_path)
+
+            # only update encodings, keep original metadata
+            add_encoding(video_json_ori['encodings'], video_json['encodings'][0]['name'], video_json['encodings'][0]['videoSources'][0])
 
             with open(json_file, 'w') as f:
                 json.dump(video_json_ori, f, indent=4, ensure_ascii=False)
