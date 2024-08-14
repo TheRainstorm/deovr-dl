@@ -57,6 +57,10 @@ output_dir
 
 ```shell
 python deovr-dl.py -O /path/to/deovr_root/ -H -S "https://example.com" -u https://deovr.com/xxx  # -H mean hosting mode
+
+# create playlist fav
+# 6 thread, download failed repeat 100 times, chunck size 10M (for bad network)
+python -u deovr-dl.py -O /path/to/deovr/root -H -S "https://example.com" -C "/path/to/cookies.txt" -P fav -u https://deovr.com/user/favorites -n 6 -R 100 -K 10485760 2>&1 | tee run.log
 ```
 
 ### nginx setup
@@ -76,6 +80,12 @@ server {
 ```
 
 Open `https://example.com/` in DeoVR player then enjoy your videos.
+
+If you change server address, please run script to rewrite json files.
+
+```shell
+python replace_server_name.py -T /path/to/deovr/root -S "https://old.example:4433" -R "https://new.example.com"
+```
 
 ## help options
 
