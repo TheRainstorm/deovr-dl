@@ -213,9 +213,30 @@ def add_to_top_json(root_dir, playlist, playlist_video_jsons):
     top_json['current_id'] += len(playlist_video_jsons_filterd)
     write_top_json(root_dir, top_json)
 
+def del_top_json(root_dir, playlist, title):
+    top_json = read_top_json(root_dir)
+    for scene in top_json['scenes']:
+        if scene['name'] != playlist:
+            continue
+        idx = -1
+        for i, video_json in enumerate(scene['list']):
+            if video_json['title'] == title:
+                idx = i
+                break
+        if idx==-1:
+            print("Warnning: {tilte} not in top json, delete failed")
+        else:
+            del scene['list'][i]
+    write_top_json(root_dir, top_json)
+    
 def make_dirs(*dirs, exist_ok=False):
     for d in dirs:
         os.makedirs(d, exist_ok=exist_ok)
+
+def remove_files(*files):
+    for f in files:
+        if os.path.exists(f):
+            os.remove(f)
         
 parser = argparse.ArgumentParser(description='Download url from deovr')
 parser.add_argument('-T', '--root-dir', required=True, help='DeoVR root dir')
@@ -229,6 +250,8 @@ parser.add_argument('--stereoMode', default="sbs", help='sbs, tb')
 
 parser.add_argument('-s', '--thumbnail-start-time', type=int, default=-1, help='specific thumbnail shot time. default shot at 1/3 duration')
 parser.add_argument('-F', '--force-thumbnail', action="store_true", help='force regenerate thumbnail')
+
+parser.add_argument('-C', '--clear-not-exist', action="store_true", help='Scan directory, clear not exist video encoding in json')
 
 args = parser.parse_args()
 
@@ -254,6 +277,49 @@ for playlist in os.listdir(root_dir):
     seeklookup_dir = os.path.join(playlist_dir, 'metadata', 'seeklookup')
     json_dir = os.path.join(playlist_dir, 'metadata', 'json')
     make_dirs(thumbnail_dir, preview_dir, seeklookup_dir, json_dir, exist_ok=True)
+    
+    if args.clear_not_exist:
+        for file in os.listdir(json_dir):
+            json_file = os.path.join(json_dir, file)
+            with open(json_file, 'r') as f:
+                video_json = json.load(f)
+            title = video_json['title']
+            print(f"Checking: {title:<50s} ", end='')
+            
+            del_flag = False # recording change
+            encodings = []
+            for encoding in video_json['encodings']:
+                videoSources = []
+                for src in encoding['videoSources']:
+                    video_path = os.path.join(playlist_dir, f"{title} - {encoding['name']} {src['resolution']}p.mp4")
+                    if os.path.exists(video_path):
+                        videoSources.append(src)
+                        # print(f"{encoding['name']} {src['resolution']}p exist")
+                    else:
+                        print(f"{encoding['name']} {src['resolution']}p not exist")
+                        del_flag = True
+                if videoSources:
+                    encodings.append({
+                        "name": encoding['name'],
+                        "videoSources": videoSources
+                    })
+            if not encodings:
+                # delete title
+                print("delete title metadata")
+                thumbnail_file = os.path.join(thumbnail_dir, f"{title}_thumbnail.jpg")
+                videoPreview_file = os.path.join(preview_dir, f"{title}_preview.mp4")
+                videoThumbnail_file = os.path.join(seeklookup_dir, f"{title}_seek.mp4")
+                remove_files(json_file, thumbnail_file, videoPreview_file, videoThumbnail_file)
+                
+                print("delete title in top json")
+                del_top_json(root_dir, playlist, title)
+            elif del_flag:
+                video_json['encodings'] = encodings
+                with open(json_file, 'w') as f:
+                    json.dump(video_json, f, indent=4, ensure_ascii=False)
+            else:
+                print("exist")
+        continue
     
     # scan playlist_dir
     playlist_video_jsons = []
