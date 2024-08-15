@@ -11,6 +11,8 @@ To address the above issues, this script is used to download videos from DeoVR o
 ### Install
 
 ```shell
+conda create -n py10 python=3.10  # test on python 3.10
+
 pip install -r requirements.txt
 ```
 
@@ -95,25 +97,30 @@ Sometimes we want to host local VR videos. It's tedious to write JSON by ourselv
 2. Run the script with the playlist name identical to the directory name (e.g., `foo`).
 
 ```shell
+# scan video
+
 # scan for new video in playlist foo, add to deovr json
 python generate_json.py -T /path/to/deovr/root -S "https://example.com" -P foo
-# use specific video 3d format, default sbs+flat
-python generate_json.py -T /path/to/deovr/root -S "https://example.com" -P foo --stereoMode='sbs' --screenType='dome' 
+# scan video, set specific video 3d format
+python generate_json.py -T /path/to/deovr/root -S "https://example.com" -P foo -V video_file.mp4 --stereoMode='sbs' --screenType='dome' 
 
-# generate json for one video, and force update video thumbnail if exist (specific shot at 3 seconds)
-python generate_json.py -T /path/to/deovr/root -S "https://example.com" -P foo -V video_file.mp4 -F -s 3 
+#  scan all playlist, clean deleted file from json
+python generate_json.py -T /path/to/deovr/root -C
 
-# (fast) scan all playlist, clean deleted file from json
-python generate_json.py -T /path/to/deovr/root -C  
+# update metadata
+
+# overwrite all metadata. bit mask mean: 1: thumbnail, 2: preview video, 4: seeklookup video, 8: timeline preview image
+python generate_json.py -T /path/to/deovr/root -P foo -F 15
+python generate_json.py -T /path/to/deovr/root -P foo -V video_file.mp4 -F 1 -s 3 # generate thumbnail for specific video at 3s
+# scan all missing metadata, don't overwrite
+python generate_json.py -T /path/to/deovr/root -P foo -F 16
 ```
-
-You will see new playlist and videos are added to deovr top json file, when the script is running.
 
 ## help options
 
 ```shell
-usage: deovr-dl.py [-h] [-u URL] [-O OUTPUT_DIR] [-t TITLE] [-y] [-C COOKIE_FILE] [-F] [-c ENCODING [ENCODING ...]] [-f SELECT_FORMAT_IDX]
-                   [-n THREAD_NUMBER] [-K CHUNK_SIZE] [-H] [-P PLAYLIST] [-S SERVER]
+usage: deovr-dl.py [-h] [-u URL] [-O OUTPUT_DIR] [-t TITLE] [-y] [-C COOKIE_FILE] [-F] [-A] [-c ENCODING [ENCODING ...]] [-f SELECT_FORMAT_IDX]
+                   [-L SKIP_POLICY] [-n THREAD_NUMBER] [-K CHUNK_SIZE] [-R FAILED_REPEAT] [-H] [-P PLAYLIST] [-S SERVER] [-E]
 
 Download url from deovr
 
@@ -128,18 +135,25 @@ options:
   -C COOKIE_FILE, --cookie-file COOKIE_FILE
                         cookie file
   -F, --list-format     list all available format
+  -A, --ask-for-download
+                        ask for download before download video
   -c ENCODING [ENCODING ...], --encoding ENCODING [ENCODING ...]
-                        filter selected encoding. e.g -c h264 h265, default only h264
+                        filter selected encoding. e.g -c h264 h265, default only h265
   -f SELECT_FORMAT_IDX, --select-format-idx SELECT_FORMAT_IDX
                         select format by index. If not set, select the best quality with filted encoding
+  -L SKIP_POLICY, --skip-policy SKIP_POLICY
+                        0: same res and encoding, 1: same encoding, 2: same title (diff encoding & res)
   -n THREAD_NUMBER, --thread-number THREAD_NUMBER
                         parallel download threads, 0 for original downloader
   -K CHUNK_SIZE, --chunk-size CHUNK_SIZE
                         Download in chunks of n bytes, default 20 MiB
+  -R FAILED_REPEAT, --failed-repeat FAILED_REPEAT
+                        download failed repeat times
   -H, --hosting-mode    normal mode: download single video. Hosting mode: download and organize
   -P PLAYLIST, --playlist PLAYLIST
                         playlist name, default `Library`. If the url is a playlist, the parsed playlist name will be used
   -S SERVER, --server SERVER
                         HTTP server address hosting the video files
+  -E, --force-metadata  force download missed metadata, don't download video
 
 ```
