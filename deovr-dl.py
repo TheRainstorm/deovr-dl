@@ -318,7 +318,7 @@ class DeoVR_DL:
         
         if not self.args.force_metadata:
             # check exist skip
-            exist_flag = self.add_encoding(single_json_data['encodings'].copy(), selected_src.copy())
+            exist_flag = self.check_encoding(single_json_data['encodings'], selected_src['encoding'], selected_src['resolution'])
             if exist_flag <= self.args.skip_policy:
                 print(f'Skip this video. exist_flag={exist_flag}, skip_policy={self.args.skip_policy}')
                 return
@@ -429,6 +429,22 @@ class DeoVR_DL:
             url_path = urllib.parse.quote(os.path.relpath(output_path, self.output_dir))
             dump_json['timelinePreview'] =f"{self.server}/{url_path}"
 
+    def check_encoding(self, encodings, encoding, resolution):
+        if len(encodings)==0:
+            return 3 # not exist same title video
+        encoding_index = {}
+        for e in encodings:
+            encoding_index[e['name']] = e
+        
+        if encoding not in encoding_index:
+            # new encoding
+            return 2 # new encoding
+        else:
+            for s in encoding_index[encoding]['videoSources']:
+                if s['resolution'] == resolution:
+                    return 0 # already exists
+            return 1 # same encoding, new resolution
+    
     def add_encoding(self, encodings, selected_src):
         exist_flag = 2
         if len(encodings) == 0:
@@ -437,6 +453,7 @@ class DeoVR_DL:
             if e['name'] == selected_src['encoding']:
                 for s in e['videoSources']:
                     if s['resolution'] == selected_src['resolution']:
+                        s['url'] = selected_src['url']  # still update url
                         return 0 # already exists
                 e['videoSources'].append({
                     'url': selected_src['url'],
