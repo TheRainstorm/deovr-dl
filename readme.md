@@ -126,6 +126,13 @@ python generate_json.py -T /path/to/deovr/root -P foo -V video_file.mp4 -F 1 -s 
 python generate_json.py -T /path/to/deovr/root -P foo -F 16
 ```
 
+### helper utility
+
+```shell
+# merge playlist `fav` to `Library`
+python utils.py -T /mnt/Disk1/WebDL/deovr/ move --src fav --dst Library
+```
+
 ## help options
 
 ```shell
