@@ -295,6 +295,7 @@ class DeoVR_DL:
         dump_json = video_json.copy()
         dump_json['title'] = video_title_id
         dump_json['id'] = self.get_current_id()
+        dump_json['ext'] = '.mp4'
         del dump_json['encodings']
     
         # prepare dir

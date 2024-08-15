@@ -75,6 +75,7 @@ def make_thumbnail(video_path, thumbnail_dir, seeklookup_dir, title, meta_data):
 def create_video_json(playlist, title, video_path, meta_data, screenType="flat", stereoMode="sbs"):
     global current_video_id
     
+    ext = os.path.splitext(video_path)[1]
     video_url = f"{args.server}/{urllib.parse.quote(f'{playlist}/metadata/json/{title}.json')}"
     video_src_url = f"{args.server}/{urllib.parse.quote(os.path.relpath(video_path, root_dir))}"
     
@@ -101,6 +102,7 @@ def create_video_json(playlist, title, video_path, meta_data, screenType="flat",
         "stereoMode": stereoMode,
         "skipIntro": 0,
         'video_url': video_url,
+        "ext": ext,
         
         # Video preview, will be used to show the rewind of the file in the player.
         "videoThumbnail": "",
@@ -291,7 +293,7 @@ for playlist in os.listdir(root_dir):
             for encoding in video_json['encodings']:
                 videoSources = []
                 for src in encoding['videoSources']:
-                    video_path = os.path.join(playlist_dir, f"{title} - {encoding['name']} {src['resolution']}p.mp4")
+                    video_path = os.path.join(playlist_dir, f"{title} - {encoding['name']} {src['resolution']}p{video_json['ext']}")
                     if os.path.exists(video_path):
                         videoSources.append(src)
                         # print(f"{encoding['name']} {src['resolution']}p exist")
@@ -352,7 +354,7 @@ for playlist in os.listdir(root_dir):
             meta_data = ffmpeg_probe(video_path)
             
             if need_fix_filename:
-                video_path_fixed = os.path.join(playlist_dir, f"{title} - {meta_data['encoding']} {meta_data['resolution']}p.mp4")
+                video_path_fixed = os.path.join(playlist_dir, f"{title} - {meta_data['encoding']} {meta_data['resolution']}p{ext}")
                 os.rename(video_path, video_path_fixed)
                 video_path = video_path_fixed
             
@@ -386,6 +388,13 @@ for playlist in os.listdir(root_dir):
             # read existing json
             with open(json_file, 'r') as f:
                 video_json_ori = json.load(f)
+            
+            if 'ext' not in video_json_ori:
+                print('update ext')
+                video_json_ori['ext'] = ext
+                with open(json_file, 'w') as f:
+                    json.dump(video_json_ori, f, indent=4, ensure_ascii=False)
+                playlist_video_jsons.append(video_json_ori)
             
             # update thumbnail
             if args.force_thumbnail:
