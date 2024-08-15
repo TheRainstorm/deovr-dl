@@ -423,7 +423,7 @@ class DeoVR_DL:
             dump_json['videoThumbnail'] = ""
         
         if 'timelinePreview' in video_json:
-            output_path = os.path.join(seeklookup_dir, f"{video_title_id}_timelinePreview.jpg")
+            output_path = os.path.join(seeklookup_dir, f"{video_title_id}_4096_timelinePreview341x195.jpg")
             if not os.path.exists(output_path):
                 download_file(self.session, video_json['timelinePreview'], output_path, repeat=repeat)
             url_path = urllib.parse.quote(os.path.relpath(output_path, self.output_dir))

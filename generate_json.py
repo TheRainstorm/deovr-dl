@@ -35,7 +35,7 @@ def make_thumbnail(video_path, thumbnail_dir, preview_dir, seeklookup_dir, title
     thumbnail_file = os.path.join(thumbnail_dir, f"{title}_thumbnail.jpg")
     videoPreview_file = os.path.join(preview_dir, f"{title}_preview.mp4")
     videoThumbnail_file = os.path.join(seeklookup_dir, f"{title}_seek.mp4")
-    timelinePreview_file = os.path.join(seeklookup_dir, f"{title}_timelinePreview.jpg")  # 4096_timelinePreview341x195
+    timelinePreview_file = os.path.join(seeklookup_dir, f"{title}_4096_timelinePreview341x195.jpg")  # 4096_timelinePreview341x195
     
     thumbnailUrl = f"{args.server}/{urllib.parse.quote(os.path.relpath(thumbnail_file, root_dir))}"
     videoPreview = f"{args.server}/{urllib.parse.quote(os.path.relpath(videoPreview_file, root_dir))}"
@@ -116,13 +116,17 @@ def make_thumbnail(video_path, thumbnail_dir, preview_dir, seeklookup_dir, title
         # composite
         collage = Image.new('RGB', (collage_width, collage_height))
         for i in range(num_frames):
-            img = Image.open(f"{image_temp_dir}/{i+1:04d}.png")
-            x = (i % grid_size[0]) * crop_width
-            y = (i // grid_size[0]) * crop_height
-            collage.paste(img, (x, y))
+            try:
+                img = Image.open(f"{image_temp_dir}/{i+1:04d}.png")
+                x = (i % grid_size[0]) * crop_width
+                y = (i // grid_size[0]) * crop_height
+                collage.paste(img, (x, y))
+            except Exception as e:
+                print(f"Error: {e}")
+                break
         collage.save(timelinePreview_file)
         # clean
-        os.system(f"rm -rf {image_temp_dir}")
+        os.system(f"rm -rf '{image_temp_dir}'")
 
     return thumbnailUrl, videoPreview, videoThumbnail, timelinePreview
 
