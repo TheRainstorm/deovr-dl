@@ -5,6 +5,7 @@ import os
 import subprocess
 import ffmpeg
 import urllib.parse
+from PIL import Image
 
 from donwloader import seconds_to_hms
 
@@ -30,10 +31,23 @@ def ffmpeg_probe(file_path):
     }
     return meta_data
 
-def make_thumbnail(video_path, thumbnail_dir, seeklookup_dir, title, meta_data):
+def make_thumbnail(video_path, thumbnail_dir, preview_dir, seeklookup_dir, title, meta_data):
     thumbnail_file = os.path.join(thumbnail_dir, f"{title}_thumbnail.jpg")
+    videoPreview_file = os.path.join(preview_dir, f"{title}_preview.mp4")
     videoThumbnail_file = os.path.join(seeklookup_dir, f"{title}_seek.mp4")
+    timelinePreview_file = os.path.join(seeklookup_dir, f"{title}_timelinePreview.jpg")  # 4096_timelinePreview341x195
     
+    thumbnailUrl = f"{args.server}/{urllib.parse.quote(os.path.relpath(thumbnail_file, root_dir))}"
+    videoPreview = f"{args.server}/{urllib.parse.quote(os.path.relpath(videoPreview_file, root_dir))}"
+    videoThumbnail = f"{args.server}/{urllib.parse.quote(os.path.relpath(videoThumbnail_file, root_dir))}"
+    timelinePreview = f"{args.server}/{urllib.parse.quote(os.path.relpath(timelinePreview_file, root_dir))}"
+    
+    def get_scale_str(video_width, video_height, crop_width, crop_height):
+        scale_str = f"scale=-1:{crop_height},crop={crop_width}:{crop_height}"
+        if video_width / video_height < crop_width / crop_height:
+            scale_str = f"scale={crop_width}:-1,crop={crop_width}:{crop_height}"
+        return scale_str
+
     width = meta_data['width']
     height = meta_data['height']
     crop_half_str = ""
@@ -44,33 +58,73 @@ def make_thumbnail(video_path, thumbnail_dir, seeklookup_dir, title, meta_data):
         crop_half_str = 'crop=iw:ih/2:0:0,'
         height //= 2
         
-    overwrite_str = '-y' if args.force_thumbnail else '-n'
+    overwrite_str = '-y' if args.force_thumbnail & 1 else '-n'
     
-    # thumbnail
-    scale_str = f"scale=-1:252,crop=420:252"
-    if width / height < 420/252:
-        scale_str = f"scale=420:-1,crop=420:252"
+    '''thumbnail'''
+    if not os.path.exists(thumbnail_file) \
+        or args.force_thumbnail & 1:
+        print("generating thumbnail")
+        scale_str = get_scale_str(width, height, 420, 252)
+        
+        if args.thumbnail_start_time >= 0:
+            start = seconds_to_hms(args.thumbnail_start_time)
+        else:
+            start = seconds_to_hms(meta_data['duration']//2)
+        cmd = f"ffmpeg -ss {start} -i '{video_path}' -vframes 1 -q:v 2 -vf '{crop_half_str}{scale_str}' '{thumbnail_file}' {overwrite_str}"
+        # print(cmd)
+        subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
-    if args.thumbnail_start_time >= 0:
-        start = seconds_to_hms(args.thumbnail_start_time)
-    else:
-        start = seconds_to_hms(meta_data['duration']//2)
-    cmd = f"ffmpeg -ss {start} -i '{video_path}' -vframes 1 -q:v 2 -vf '{crop_half_str}{scale_str}' '{thumbnail_file}' {overwrite_str}"
-    # print(cmd)
-    subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+    '''video preview'''
+    if not os.path.exists(videoPreview_file) \
+        or args.force_thumbnail & 2:
+        # 15s, crop to 330x200
+        print("generating preview video")
+        scale_str = get_scale_str(width, height, 330, 200)
+        overwrite_str = '-y' if args.force_thumbnail & 2 else '-n'
+        last = min(meta_data['duration'], 15)
+        
+        subprocess.run(f"ffmpeg -i '{video_path}' -t {last} -an -vf '{crop_half_str}{scale_str}' -c:v libx264 -crf 23 -preset ultrafast '{videoPreview_file}' {overwrite_str}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
-    print("generating preview video")
-    overwrite_str = '-n'
-    # seek preivew video, crop to 330x200
-    scale_str = f"scale=-1:200,crop=330:200"
-    if width / height < 330/200:
-        scale_str = f"scale=330:-1,crop=330:200"
-    subprocess.run(f"ffmpeg -i '{video_path}' -an -vf '{crop_half_str}{scale_str}' -c:v libx264 -crf 35 -preset ultrafast '{videoThumbnail_file}' {overwrite_str}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    '''seeking preivew video'''
+    if not os.path.exists(videoThumbnail_file):
+        videoThumbnail = ""
+    # !!! obsolescent
+    # print("generating seek preview video")
+    # overwrite_str = '-y' if args.force_thumbnail & 4 else '-n'
+    # fps = 5
+    # subprocess.run(f"ffmpeg -i '{video_path}' -an -vf 'fps={fps},{crop_half_str}{scale_str}' -c:v libx264 -crf 23 -preset ultrafast '{videoThumbnail_file}' {overwrite_str}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
-    thumbnailUrl = f"{args.server}/{urllib.parse.quote(os.path.relpath(thumbnail_file, root_dir))}"
-    videoThumbnail = f"{args.server}/{urllib.parse.quote(os.path.relpath(videoThumbnail_file, root_dir))}"
-    videoPreview = videoThumbnail
-    return thumbnailUrl, videoPreview, videoThumbnail
+    '''timeline preview'''
+    if not os.path.exists(timelinePreview_file) \
+        or args.force_thumbnail & 8:
+        # shortcut num_frames picture and composite one 4096x4096 picture
+        print("generating timeline preview image")
+        crop_width, crop_height = 341, 195
+        collage_width = collage_height = 4096
+        grid_size = [collage_width//crop_width, collage_height//crop_height]
+        num_frames = grid_size[0]*grid_size[1]  # 252
+        
+        frame_interval = meta_data['duration'] / num_frames
+        scale_str = get_scale_str(width, height, crop_width, crop_height)
+        
+        image_temp_dir = os.path.join(seeklookup_dir, f"{title}_timelinePreview")
+        os.makedirs(image_temp_dir, exist_ok=True)
+        cmd = f"ffmpeg -i '{video_path}' -an -vf 'fps=1/{frame_interval},{crop_half_str}{scale_str}' '{image_temp_dir}'/%04d.png"
+        # print(cmd)
+        subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # composite
+        collage = Image.new('RGB', (collage_width, collage_height))
+        for i in range(num_frames):
+            img = Image.open(f"{image_temp_dir}/{i+1:04d}.png")
+            x = (i % grid_size[0]) * crop_width
+            y = (i // grid_size[0]) * crop_height
+            collage.paste(img, (x, y))
+        collage.save(timelinePreview_file)
+        # clean
+        os.system(f"rm -rf {image_temp_dir}")
+
+    return thumbnailUrl, videoPreview, videoThumbnail, timelinePreview
 
 def create_video_json(playlist, title, video_path, meta_data, screenType="flat", stereoMode="sbs"):
     global current_video_id
@@ -109,6 +163,7 @@ def create_video_json(playlist, title, video_path, meta_data, screenType="flat",
         #  Neccessary thumbnail and preview (optional) in case of playing from Selection Scene
         "thumbnailUrl": "",  # The field ‘thumbnailUrl’ should contain the link to the file with the image shown in the list.
         "videoPreview": "", # The field ‘videoPreview’ contains the link to the video file, which is shown when moving the cursor to this video in the list.
+        "timelinePreview": "",
     }
     
     return video_json
@@ -251,7 +306,7 @@ parser.add_argument('--screenType', default="flat", help='flat, dome(180), spher
 parser.add_argument('--stereoMode', default="sbs", help='sbs, tb')
 
 parser.add_argument('-s', '--thumbnail-start-time', type=int, default=-1, help='specific thumbnail shot time. default shot at 1/3 duration')
-parser.add_argument('-F', '--force-thumbnail', action="store_true", help='force regenerate thumbnail')
+parser.add_argument('-F', '--force-thumbnail', type=int, default=0, help='bitmask, force regenerate video seek|video preview|thumbnail')
 
 parser.add_argument('-C', '--clear-not-exist', action="store_true", help='Scan directory, clear not exist video encoding in json')
 
@@ -371,11 +426,12 @@ for playlist in os.listdir(root_dir):
             video_path, meta_data, video_json = probe_and_create(video_path)
         
             # make thumbnail etc.
-            thumbnailUrl, videoPreview, videoThumbnail = make_thumbnail(video_path, thumbnail_dir, seeklookup_dir, title, meta_data)
+            thumbnailUrl, videoPreview, videoThumbnail, timelinePreview = make_thumbnail(video_path, thumbnail_dir, preview_dir, seeklookup_dir, title, meta_data)
             video_json.update({
                 "videoThumbnail": videoThumbnail,
                 "thumbnailUrl": thumbnailUrl,
                 "videoPreview": videoPreview,
+                "timelinePreview": timelinePreview,
             })
             
             with open(json_file, 'w') as f:
@@ -389,21 +445,30 @@ for playlist in os.listdir(root_dir):
             with open(json_file, 'r') as f:
                 video_json_ori = json.load(f)
             
-            if 'ext' not in video_json_ori:
-                print('update ext')
-                video_json_ori['ext'] = ext
-                with open(json_file, 'w') as f:
-                    json.dump(video_json_ori, f, indent=4, ensure_ascii=False)
-                playlist_video_jsons.append(video_json_ori)
+            # if 'ext' not in video_json_ori:
+            #     print('update ext')
+            #     video_json_ori['ext'] = ext
+            #     with open(json_file, 'w') as f:
+            #         json.dump(video_json_ori, f, indent=4, ensure_ascii=False)
+            #     playlist_video_jsons.append(video_json_ori)
             
             # update thumbnail
             if args.force_thumbnail:
-                make_thumbnail(video_path, thumbnail_dir, seeklookup_dir, title, meta_data)
+                meta_data = ffmpeg_probe(video_path)
+                thumbnailUrl, videoPreview, videoThumbnail, timelinePreview = make_thumbnail(video_path, thumbnail_dir, preview_dir, seeklookup_dir, title, meta_data)
+                video_json_ori.update({
+                    "videoThumbnail": videoThumbnail,
+                    "thumbnailUrl": thumbnailUrl,
+                    "videoPreview": videoPreview,
+                    "timelinePreview": timelinePreview,
+                })
+                with open(json_file, 'w') as f:
+                    json.dump(video_json_ori, f, indent=4, ensure_ascii=False)
             
             if not need_fix_filename:
                 exist_flag = check_encoding(video_json_ori['encodings'], req_encoding, req_resolution)
                 if exist_flag==0:
-                    print(f"Already exists, skip")
+                    print(f"Encoding and res Already exists, skip")
                     playlist_video_jsons.append(video_json_ori)
                     continue
             

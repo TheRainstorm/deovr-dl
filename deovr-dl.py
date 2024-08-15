@@ -58,7 +58,7 @@ class DeoVR_DL:
         parser.add_argument('-P', '--playlist', default="Library", help='playlist name, default `Library`. If the url is a playlist, the parsed playlist name will be used')
         parser.add_argument('-S', '--server', default="http://localhost:8000", help='HTTP server address hosting the video files')
         
-        parser.add_argument('-E', '--force-metadata', action="store_true", help='force download metadata, except video')
+        parser.add_argument('-E', '--force-metadata', action="store_true", help='force download missed metadata, don\'t download video')
         args = parser.parse_args()
         return args
     
@@ -414,11 +414,20 @@ class DeoVR_DL:
         
         # (optional) You can add a video file which will be used to show the rewind of the file in the player.
         if 'videoThumbnail' in video_json:
-            output_path = os.path.join(seeklookup_dir, f"{video_title_id}_seek.mp4")
+            # !!! obsolescent, not used
+            # output_path = os.path.join(seeklookup_dir, f"{video_title_id}_seek.mp4")
+            # if not os.path.exists(output_path):
+            #     download_file(self.session, video_json['videoThumbnail'], output_path, repeat=repeat)
+            # url_path = urllib.parse.quote(os.path.relpath(output_path, self.output_dir))
+            # dump_json['videoThumbnail'] =f"{self.server}/{url_path}"
+            dump_json['videoThumbnail'] = ""
+        
+        if 'timelinePreview' in video_json:
+            output_path = os.path.join(seeklookup_dir, f"{video_title_id}_timelinePreview.jpg")
             if not os.path.exists(output_path):
-                download_file(self.session, video_json['videoThumbnail'], output_path, repeat=repeat)
+                download_file(self.session, video_json['timelinePreview'], output_path, repeat=repeat)
             url_path = urllib.parse.quote(os.path.relpath(output_path, self.output_dir))
-            dump_json['videoThumbnail'] =f"{self.server}/{url_path}"
+            dump_json['timelinePreview'] =f"{self.server}/{url_path}"
 
     def add_encoding(self, encodings, selected_src):
         exist_flag = 2

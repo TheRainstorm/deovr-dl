@@ -65,6 +65,7 @@ def get_video_json_from_videoData(video_data):
         #  Neccessary thumbnail and preview (optional) in case of playing from Selection Scene
         "thumbnailUrl": video_data['posterURL'],  # The field ‘thumbnailUrl’ should contain the link to the file with the image shown in the list.
         "videoPreview": video_data['rewindVideo'], # The field ‘videoPreview’ contains the link to the video file, which is shown when moving the cursor to this video in the list.
+        "timelinePreview": "",
         
         # useful
         "description": video_data['title'],
