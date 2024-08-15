@@ -27,6 +27,15 @@ python deovr-dl.py -u https://deovr.com/oraehm -c h265     # download h265 best 
 python deovr-dl.py -O ./output -u https://deovr.com/oraehm -n 6  # specify thread number
 ```
 
+```shell
+# download all video in playlist, script will download video one by one, page by page
+python deovr-dl.py -O /path/to/deovr/root -C "/path/to/cookies.txt" -u https://deovr.com/user/favorites -P fav
+
+# if your network is not good, you should use multiple thread downloading (which can recover from failed), 
+# and set failed repeat time, decreasing chunk size (10M)
+python -u deovr-dl.py -O /path/to/deovr/root -C "/path/to/cookies.txt" -u https://deovr.com/user/favorites -P fav -n 6 -R 100 -K 10485760 2>&1 | tee run.log
+```
+
 ## Self-hosting Web Server
 
 DeoVR provides [documentation](https://deovr.com/app/doc#multiple-videos-deeplink) on how to integrate DeoVR into your own website.
@@ -58,11 +67,12 @@ output_dir
 ```
 
 ```shell
+# download video and save to default playlist `Library`
 python deovr-dl.py -O /path/to/deovr_root/ -H -S "https://example.com" -u https://deovr.com/xxx  # -H mean hosting mode
 
-# create playlist fav
+# download deovr favorite playlist, save as `fav`
 # 6 thread, download failed repeat 100 times, chunck size 10M (for bad network)
-python -u deovr-dl.py -O /path/to/deovr/root -H -S "https://example.com" -C "/path/to/cookies.txt" -P fav -u https://deovr.com/user/favorites -n 6 -R 100 -K 10485760 2>&1 | tee run.log
+python deovr-dl.py -O /path/to/deovr/root -C "/path/to/cookies.txt" -H -S "https://example.com" -u https://deovr.com/user/favorites -P fav
 ```
 
 ### nginx setup
