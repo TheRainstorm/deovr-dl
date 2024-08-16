@@ -19,7 +19,7 @@ pip install -r requirements.txt
 ### Download single video
 
 ```shell
-python deovr-dl.py -u https://deovr.com/oraehm          # download h264 best quality video
+python deovr-dl.py -u https://deovr.com/oraehm          # download best quality video
 python deovr-dl.py -O ./output -u https://deovr.com/oraehm       # specify output dir
 python deovr-dl.py -u https://deovr.com/oraehm -F       # list all available format
 python deovr-dl.py -u https://deovr.com/oraehm -f 0     # select format by index
@@ -71,7 +71,6 @@ output_dir
 python deovr-dl.py -O /path/to/deovr_root/ -H -S "https://example.com" -u https://deovr.com/xxx  # -H mean hosting mode
 
 # download deovr favorite playlist, save as `fav`
-# 6 thread, download failed repeat 100 times, chunck size 10M (for bad network)
 python deovr-dl.py -O /path/to/deovr/root -C "/path/to/cookies.txt" -H -S "https://example.com" -u https://deovr.com/user/favorites -P fav
 ```
 
@@ -109,9 +108,9 @@ Sometimes we want to host local VR videos. It's tedious to write JSON by ourselv
 ```shell
 # scan video
 
-# scan for new video in playlist foo, add to deovr json
+# scan for new video in foo directory, and add to playlist
 python generate_json.py -T /path/to/deovr/root -S "https://example.com" -P foo
-# scan video, set specific video 3d format
+# Scan for specific video, and using specific 3d format
 python generate_json.py -T /path/to/deovr/root -S "https://example.com" -P foo -V video_file.mp4 --stereoMode='sbs' --screenType='dome' 
 
 #  scan all playlist, clean deleted file from json
@@ -120,8 +119,9 @@ python generate_json.py -T /path/to/deovr/root -C
 # update metadata
 
 # overwrite all metadata. bit mask mean: 1: thumbnail, 2: preview video, 4: seeklookup video, 8: timeline preview image
-python generate_json.py -T /path/to/deovr/root -P foo -F 15
-python generate_json.py -T /path/to/deovr/root -P foo -V video_file.mp4 -F 1 -s 3 # generate thumbnail for specific video at 3s
+python generate_json.py -T /path/to/deovr/root -P foo -F 15 #(1111)
+# regenerate thumbnail for specific video, snapshot at 3s
+python generate_json.py -T /path/to/deovr/root -P foo -V video_file.mp4 -F 1 -s 3
 # scan all missing metadata, don't overwrite
 python generate_json.py -T /path/to/deovr/root -P foo -F 16
 ```
@@ -129,7 +129,7 @@ python generate_json.py -T /path/to/deovr/root -P foo -F 16
 ### helper utility
 
 ```shell
-# merge playlist `fav` to `Library`
+# merge playlist `fav` to `Library` and delete `fav`
 python utils.py -T /mnt/Disk1/WebDL/deovr/ move --src fav --dst Library
 ```
 
