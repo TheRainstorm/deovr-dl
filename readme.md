@@ -31,6 +31,7 @@ python deovr-dl.py -O ./output -u https://deovr.com/oraehm -n 6  # specify threa
 ```shell
 # download all video in playlist, script will download video one by one, page by page
 python deovr-dl.py -O /path/to/deovr/root -C "/path/to/cookies.txt" -u https://deovr.com/user/favorites -P fav
+python deovr-dl.py -O /path/to/deovr/root -C "/path/to/cookies.txt" -u https://deovr.com/user/favorites -P fav -p ":1"  # download first page. ":" (all page), "-1:" (last page)
 
 # if your network is not good, you should use multiple thread downloading (which can recover from failed), 
 # and set failed repeat time, decreasing chunk size (10M)

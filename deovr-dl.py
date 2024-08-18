@@ -56,6 +56,7 @@ class DeoVR_DL:
         # hosting mode
         parser.add_argument('-H', '--hosting-mode', action="store_true", help='normal mode: download single video. Hosting mode: download and organize')
         parser.add_argument('-P', '--playlist', default="Library", help='playlist name, default `Library`. If the url is a playlist, the parsed playlist name will be used')
+        parser.add_argument('-p', '--playlist-range', default=":", help='playlist start:end range. ":1", "-1:"')
         parser.add_argument('-S', '--server', default="http://localhost:8000", help='HTTP server address hosting the video files')
         
         parser.add_argument('-E', '--force-metadata', action="store_true", help='force download missed metadata, don\'t download video')
@@ -101,7 +102,16 @@ class DeoVR_DL:
             print('Download Playlist')
             page_num = json_data['page_num']
             web_support = True
-            for page in range(1, page_num + 1):
+            
+            start_page, end_page = self.args.playlist_range.split(':')
+            start_page = 1 if start_page=='' else int(start_page)
+            end_page = page_num if end_page=='' else int(end_page)
+            if start_page < 0:
+                start_page += page_num + 1
+            if end_page < 0:
+                end_page += page_num + 1
+            print(f"download range: {start_page}:{end_page}")
+            for page in range(start_page, end_page + 1):
                 print(f"\nDownloading page {page}/{page_num}")
                 if page == 1:
                     videos = json_data['page_1']
