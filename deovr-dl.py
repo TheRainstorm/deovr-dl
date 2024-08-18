@@ -51,7 +51,7 @@ class DeoVR_DL:
 
         parser.add_argument('-n', '--thread-number', type=int, default=0, help='parallel download threads, 0 for original downloader')
         parser.add_argument('-K', '--chunk-size', type=int,  default=20*1024**2, help='Download in chunks of n bytes, default 20 MiB')
-        parser.add_argument('-R', '--failed-repeat', type=int,  default=1, help='download failed repeat times')
+        parser.add_argument('-R', '--failed-repeat', type=int,  default=3, help='download failed repeat times')
         
         # hosting mode
         parser.add_argument('-H', '--hosting-mode', action="store_true", help='normal mode: download single video. Hosting mode: download and organize')

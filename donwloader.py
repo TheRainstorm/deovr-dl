@@ -26,7 +26,7 @@ def download_chunk_helper(session, url, start, end, stream=True):
     range_header = f'bytes={start}-{end}'
     chunk_headers = headers.copy()
     chunk_headers['Range'] = range_header
-    response = session.get(url, headers=chunk_headers, stream=stream, timeout=(10, 5))  # set timeout, so don't hang long time
+    response = session.get(url, headers=chunk_headers, stream=stream, timeout=(10, 20))  # set timeout, so don't hang long time
     return response
 
 def print_speed(seconds, total_size):
