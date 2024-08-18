@@ -12,6 +12,7 @@ To address the above issues, this script is used to download videos from DeoVR o
 
 ```shell
 conda create -n py10 python=3.10  # test on python 3.10
+# or python3 -m venv .venv && source .venv/bin/activate
 
 pip install -r requirements.txt
 ```

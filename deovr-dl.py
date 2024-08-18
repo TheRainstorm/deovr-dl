@@ -101,7 +101,7 @@ class DeoVR_DL:
             print('Download Playlist')
             page_num = json_data['page_num']
             web_support = True
-            for page in range(1, page_num):
+            for page in range(1, page_num + 1):
                 print(f"\nDownloading page {page}/{page_num}")
                 if page == 1:
                     videos = json_data['page_1']
@@ -123,13 +123,15 @@ class DeoVR_DL:
                                 video_json['encodings'] = video_json_tmp['encodings']
                     else:
                         video_json = self.get_video_json_from_href(video_href)
-                        
+                    
+                    # with open('current.json', 'w') as f:
+                    #     json.dump(video_json, f, indent=4)
                     self.download_single_video(video_json)
        
     def parse_url(self, url):
         response = self.session.get(url)
-        with open('test.html', 'w') as f:
-            f.write(response.text)
+        # with open('test.html', 'w') as f:
+        #     f.write(response.text)
 
         # try single
         def try_single():
@@ -476,7 +478,7 @@ class DeoVR_DL:
     def read_top_json(self):
         # read playlist json
         top_json_path = os.path.join(self.output_dir, 'top.json')
-        self.top_json = {'scenes': []}
+        self.top_json = {'scenes': [], 'current_id': 1000}
         if os.path.exists(top_json_path):
             with open(top_json_path, 'r') as f:
                 self.top_json = json.load(f)
