@@ -246,10 +246,10 @@ def add_to_top_json(root_dir, playlist, playlist_video_jsons):
     
     top_json = read_top_json(root_dir)
     
-    scend_index = {}
+    scene_index = {}
     for scene in top_json['scenes']:
-        scend_index[scene['name']] = scene
-    if playlist not in scend_index:
+        scene_index[scene['name']] = scene
+    if playlist not in scene_index:
         top_json['scenes'].append({
             'name': playlist,
             'list': playlist_video_jsons_short
@@ -260,7 +260,7 @@ def add_to_top_json(root_dir, playlist, playlist_video_jsons):
         return
 
     title_index = {}
-    for video_json in scend_index[playlist]['list']:
+    for video_json in scene_index[playlist]['list']:
         title_index[video_json['title']] = video_json
     
     playlist_video_jsons_filterd = []
@@ -271,7 +271,7 @@ def add_to_top_json(root_dir, playlist, playlist_video_jsons):
         playlist_video_jsons_filterd.append(video_json)
     
     # add to top json
-    scend_index[playlist]['list'] += playlist_video_jsons_filterd
+    scene_index[playlist]['list'] += playlist_video_jsons_filterd
     
     top_json['current_id'] += len(playlist_video_jsons_filterd)
     write_top_json(root_dir, top_json)
@@ -479,6 +479,7 @@ if __name__ == "__main__":
                         playlist_video_jsons.append(video_json_ori)
                         continue
                 
+                print(f"Add new format: {req_encoding} {req_resolution}p")
                 # new encoding
                 video_path, meta_data, video_json = probe_and_create(video_path)
 

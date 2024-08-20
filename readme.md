@@ -19,6 +19,8 @@ pip install -r requirements.txt
 
 ### Download single video
 
+Support for deovr.com, jillvr.com, and others. Try it yourself.
+
 ```shell
 python deovr-dl.py -u https://deovr.com/oraehm          # download best quality video
 python deovr-dl.py -O ./output -u https://deovr.com/oraehm       # specify output dir
@@ -27,6 +29,10 @@ python deovr-dl.py -u https://deovr.com/oraehm -f 0     # select format by index
 python deovr-dl.py -u https://deovr.com/oraehm -c h265     # download h265 best quality video
 python deovr-dl.py -O ./output -u https://deovr.com/oraehm -n 6  # specify thread number
 ```
+
+### Download playlist
+
+Support most page using similar paginator, e.g. `https://deovr.com/user/favorites`, `https://deovr.com/playlists/xxx`
 
 ```shell
 # download all video in playlist, script will download video one by one, page by page
@@ -131,8 +137,18 @@ python generate_json.py -T /path/to/deovr/root -P foo -F 16
 ### helper utility
 
 ```shell
-# merge playlist `fav` to `Library` and delete `fav`
-python utils.py -T /mnt/Disk1/WebDL/deovr/ move --src fav --dst Library
+# list all playlist and videos number
+python utils.py -T /path/to/deovr/root list
+
+# rename playlist name
+python utils.py -T /path/to/deovr/root rename --src playlist1 --dst playlist2
+# move all videos from playlist to another
+python utils.py -T /path/to/deovr/root move --src playlist1 --dst playlist2
+# move one video from playlist to another
+python utils.py -T /path/to/deovr/root move --src playlist1 -V "title" --dst playlist2
+
+# delete duplicate video in playlist
+python utils.py -T /path/to/deovr/root dupdel --src playlist1 --ref playlist2
 ```
 
 ## help options
