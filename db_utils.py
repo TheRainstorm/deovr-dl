@@ -15,7 +15,7 @@ from donwloader import seconds_to_hms
 def read_db_json(root_dir):
     # read playlist json
     db_json_path = os.path.join(root_dir, 'top.json')
-    db_json = {'scenes': [], 'current_id': 0}
+    db_json = {'scenes': [], 'current_id': 1000}
     if os.path.exists(db_json_path):
         with open(db_json_path, 'r') as f:
             db_json_tmp = json.load(f)
@@ -49,8 +49,10 @@ def get_title_index(scene):
 # video
 def read_video_json(root_dir, playlist, title):
     json_path = os.path.join(root_dir, playlist, "metadata", "json", f"{title}.json")
-    with open(json_path, "r") as f:
-        return json.load(f)
+    if os.path.exists(json_path):
+        with open(json_path, "r") as f:
+            return json.load(f)
+    return {}
 
 def write_video_json(root_dir, playlist, title, video_json):
     json_path = os.path.join(root_dir, playlist, "metadata", "json", f"{title}.json")

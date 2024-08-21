@@ -9,6 +9,7 @@ import json
 import re
 from donwloader import sanitize_filename, seconds_to_hms, download_file, download_file_in_chunks
 from compatibility import get_video_data, get_video_json_from_videoData
+from db_utils import *
 
 def parseCookieFile(cookie_file) -> dict:
     ''' parseCookieFile function used to convert
@@ -27,18 +28,27 @@ def parseCookieFile(cookie_file) -> dict:
     
     return cookies
 
-def make_dirs(*dirs, exist_ok=False):
-    for d in dirs:
-        os.makedirs(d, exist_ok=exist_ok)
-
 class DeoVR_DL:
     def __init__(self):
         pass
     
+    def get(self, url, **kwargs):
+        repeat = self.args.failed_repeat
+        while repeat>0:
+            try:
+                response = self.session.get(url, **kwargs)
+                return response
+            except Exception as e:
+                repeat -= 1
+                if repeat == 0:
+                    print(f"Get {url} failed {self.args.failed_repeat} times, exit")
+                    print(f"Exception: {e}")
+                    exit(-1)
+    
     def parse_args(self):
         parser = argparse.ArgumentParser(description='Download url from deovr')
         parser.add_argument('-u', '--url', help='URL of video page')
-        parser.add_argument('-O', '--output-dir', default='./', help='Output file dir')
+        parser.add_argument('-O', '--root-dir', default='./', help='deovr root dir')
         parser.add_argument('-t', '--title', default='', help='Used to construct filename. If not set, parse title from web')
         parser.add_argument('-y', '--overwrite', action="store_true", help='overwrite exist')
         parser.add_argument('-C', '--cookie-file', default='', help='cookie file')
@@ -66,9 +76,9 @@ class DeoVR_DL:
     def process_args(self, args):
         self.args = args
         
-        self.output_dir = args.output_dir
-        if not os.path.exists(args.output_dir):
-            os.makedirs(args.output_dir, exist_ok=True)
+        self.root_dir = args.root_dir
+        if not os.path.exists(args.root_dir):
+            os.makedirs(args.root_dir, exist_ok=True)
 
         headers = {
             'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36 Edg/127.0.0.0'
@@ -89,7 +99,6 @@ class DeoVR_DL:
         args = self.parse_args()
         
         self.process_args(args)
-        self.read_top_json()
         
         type, json_data = self.parse_url(self.args.url)
         if type == -1 :
@@ -139,7 +148,7 @@ class DeoVR_DL:
                     self.download_single_video(video_json)
        
     def parse_url(self, url):
-        response = self.session.get(url)
+        response = self.get(url)
         # with open('test.html', 'w') as f:
         #     f.write(response.text)
 
@@ -188,7 +197,7 @@ class DeoVR_DL:
     def get_video_json_from_id(self, video_id):
         domain = self.args.url.split('/')[2]
         url = f"https://{domain}/deovr/video/id/{video_id}"
-        video_json =  self.session.get(url).json()
+        video_json =  self.get(url).json()
         if "encodings" not in video_json:
             print(f"[Warnning]: {domain} don't support get json from video id. {video_json}")
             return 1, None
@@ -200,13 +209,13 @@ class DeoVR_DL:
     def get_video_json_from_href(self, href):
         domain = self.args.url.split('/')[2]
         url = f"https://{domain}{href}"
-        response = self.session.get(url)
+        response = self.get(url)
         video_data = get_video_data(response)
         return get_video_json_from_videoData(video_data)
     
     def parse_one_page(self, url, page, response=None):
         if response is None:
-            response = self.session.get(url, params={'page': page})
+            response = self.get(url, params={'page': page})
         tree = html.fromstring(response.content)
         
         links_with_data_like_id = tree.xpath('//a[@data-like-id]')
@@ -283,9 +292,9 @@ class DeoVR_DL:
         self.print_metadata(video_json)
         
         # title_id as identifier
-        video_title_id = f"{sanitize_filename(video_json['title'])} [{video_json['id']}]"
+        title = f"{sanitize_filename(video_json['title'])} [{video_json['id']}]"
         if self.args.title:
-            video_title_id = self.args.title
+            title = self.args.title
         
         # format select
         src_list = self.get_src_list(video_json)
@@ -300,19 +309,20 @@ class DeoVR_DL:
         selected_src = self.select_format(src_list, encodings=self.args.encoding, select_format_idx=self.args.select_format_idx)
         
         if not self.args.hosting_mode: # just download video
-            self.download_video(video_title_id, self.output_dir, selected_src)
+            self.download_video(title, self.root_dir, selected_src)
             return
         
         # hosting mode
+        db_json = read_db_json(self.root_dir)
         dump_json = video_json.copy()
-        dump_json['title'] = video_title_id
-        dump_json['id'] = self.get_current_id()
+        dump_json['title'] = title
+        dump_json['id'] = get_current_id(db_json)
         dump_json['ext'] = '.mp4'
         del dump_json['encodings']
     
         # prepare dir
         playlist = self.args.playlist
-        playlist_dir = os.path.join(self.output_dir, playlist)
+        playlist_dir = os.path.join(self.root_dir, playlist)
 
         thumbnail_dir = os.path.join(playlist_dir, 'metadata', 'thumbnail')
         preview_dir = os.path.join(playlist_dir, 'metadata', 'preview')
@@ -320,55 +330,50 @@ class DeoVR_DL:
         json_dir = os.path.join(playlist_dir, 'metadata', 'json')
         make_dirs(thumbnail_dir, preview_dir, seeklookup_dir, json_dir, exist_ok=True)
         
-        single_json_data = {}
-        single_json_path = os.path.join(json_dir, f'{video_title_id}.json')
-        if os.path.exists(single_json_path):
-            with open(single_json_path, 'r') as f:
-                single_json_data = json.load(f)
-        if 'encodings' not in single_json_data:
-            single_json_data['encodings'] = []
+        video_json_ori = read_video_json(self.root_dir, playlist, title)
+        if 'encodings' not in video_json_ori:
+            video_json_ori['encodings'] = []
         
         if not self.args.force_metadata:
             # check exist skip
-            exist_flag = self.check_encoding(single_json_data['encodings'], selected_src['encoding'], selected_src['resolution'])
+            exist_flag = check_encoding(video_json_ori['encodings'], selected_src['encoding'], selected_src['resolution'])
             if exist_flag <= self.args.skip_policy:
                 print(f'Skip this video. exist_flag={exist_flag}, skip_policy={self.args.skip_policy}')
                 return
         
             # download video
-            video_path, succ = self.download_video(video_title_id, playlist_dir, selected_src)
+            video_path, succ = self.download_video(title, playlist_dir, selected_src)
             if not succ:
                 print(f"Download video failed, skip")
                 return
 
             # modify url
-            url_path = urllib.parse.quote(os.path.relpath(video_path, self.output_dir))
+            url_path = urllib.parse.quote(os.path.relpath(video_path, self.root_dir))
             selected_src['url'] = f"{self.server}/{url_path}"
             
-            self.add_encoding(single_json_data['encodings'], selected_src)
+            add_encoding(video_json_ori['encodings'], selected_src['encoding'],
+                              self.get_videoSource(selected_src))
         
         # download metadata (after video download, if we don't download video, we don't need metadata)
         print("Downloading metadata")
-        self.download_others(video_json, dump_json, video_title_id, thumbnail_dir, preview_dir, seeklookup_dir)
+        self.download_others(video_json, dump_json, title, thumbnail_dir, preview_dir, seeklookup_dir)
         
         # self extended key, top playlist json will use it
-        # url_path = urllib.parse.quote(f"{playlist}/metadata/json/{video_title_id}.json")
-        # dump_json['video_url'] = f"{self.server}/{url_path}"
-        dump_json['video_url'] = f"{self.server}/{playlist}/metadata/json/{video_title_id}.json"  # test, it's ok
-        single_json_data.update(dump_json)
+        dump_json['video_url'] = f"{self.server}/{playlist}/metadata/json/{title}.json"  # test, it's ok
+        video_json_ori.update(dump_json)
         
-        # save json
+        # save video json
         print("Save single video json")
-        with open(single_json_path, 'w') as f:
-            json.dump(single_json_data, f, indent=4)
+        write_video_json(self.root_dir, playlist, title, video_json_ori)
         
-        # add to top.json
+        # add to db
         print("Add to top json")
-        self.add_to_top_json(playlist, single_json_data, video_title_id)
+        db_add_title(db_json, playlist, video_json_ori)
+        write_db_json(self.root_dir, db_json)
        
-    def download_video(self, video_title_id, output_dir, selected_src):
+    def download_video(self, title, output_dir, selected_src):
         succ = True
-        filename = f"{video_title_id} - {selected_src['encoding']} {selected_src['quality']}"
+        filename = f"{title} - {selected_src['encoding']} {selected_src['quality']}"
         output_file = os.path.join(output_dir, f"{filename}.mp4")
         output_tmp_file = os.path.join(output_dir, f"{filename}.mp4.tmp")
         recover_file = os.path.join(output_dir, f"{filename}.recover.json")
@@ -407,135 +412,47 @@ class DeoVR_DL:
                 print('Download failed, run again to recover')
         return output_file, succ
     
-    def download_others(self, video_json, dump_json, video_title_id, thumbnail_dir, preview_dir, seeklookup_dir):
+    def download_others(self, video_json, dump_json, title, thumbnail_dir, preview_dir, seeklookup_dir):
         repeat = self.args.failed_repeat
         # The field ‘thumbnailUrl’ should contain the link to the file with the image shown in the list. This field is required in case of using the list.
-        output_path = os.path.join(thumbnail_dir, f"{video_title_id}_thumbnail.jpg")
+        output_path = os.path.join(thumbnail_dir, f"{title}_thumbnail.jpg")
         if not os.path.exists(output_path):
             download_file(self.session, video_json['thumbnailUrl'], output_path, repeat=repeat)
-        url_path = urllib.parse.quote(os.path.relpath(output_path, self.output_dir))
+        url_path = urllib.parse.quote(os.path.relpath(output_path, self.root_dir))
         dump_json['thumbnailUrl'] = f"{self.server}/{url_path}"
         
         # (optional) The field ‘videoPreview’ contains the link to the video file, which is shown when moving the cursor to this video in the list. This field is not required.
         if 'videoPreview' in video_json:
-            output_path = os.path.join(preview_dir, f"{video_title_id}_preview.mp4")
+            output_path = os.path.join(preview_dir, f"{title}_preview.mp4")
             if not os.path.exists(output_path):
                 download_file(self.session, video_json['videoPreview'], output_path, repeat=repeat)
-            url_path = urllib.parse.quote(os.path.relpath(output_path, self.output_dir))
+            url_path = urllib.parse.quote(os.path.relpath(output_path, self.root_dir))
             dump_json['videoPreview'] = f"{self.server}/{url_path}"
         
         # (optional) You can add a video file which will be used to show the rewind of the file in the player.
         if 'videoThumbnail' in video_json:
             # !!! obsolescent, not used
-            # output_path = os.path.join(seeklookup_dir, f"{video_title_id}_seek.mp4")
+            # output_path = os.path.join(seeklookup_dir, f"{title}_seek.mp4")
             # if not os.path.exists(output_path):
             #     download_file(self.session, video_json['videoThumbnail'], output_path, repeat=repeat)
-            # url_path = urllib.parse.quote(os.path.relpath(output_path, self.output_dir))
+            # url_path = urllib.parse.quote(os.path.relpath(output_path, self.root_dir))
             # dump_json['videoThumbnail'] =f"{self.server}/{url_path}"
             dump_json['videoThumbnail'] = ""
         
         if 'timelinePreview' in video_json:
-            output_path = os.path.join(seeklookup_dir, f"{video_title_id}_4096_timelinePreview341x195.jpg")
+            output_path = os.path.join(seeklookup_dir, f"{title}_4096_timelinePreview341x195.jpg")
             if not os.path.exists(output_path):
                 download_file(self.session, video_json['timelinePreview'], output_path, repeat=repeat)
-            url_path = urllib.parse.quote(os.path.relpath(output_path, self.output_dir))
+            url_path = urllib.parse.quote(os.path.relpath(output_path, self.root_dir))
             dump_json['timelinePreview'] =f"{self.server}/{url_path}"
-
-    def check_encoding(self, encodings, encoding, resolution):
-        if len(encodings)==0:
-            return 3 # not exist same title video
-        encoding_index = {}
-        for e in encodings:
-            encoding_index[e['name']] = e
-        
-        if encoding not in encoding_index:
-            # new encoding
-            return 2 # new encoding
-        else:
-            for s in encoding_index[encoding]['videoSources']:
-                if s['resolution'] == resolution:
-                    return 0 # already exists
-            return 1 # same encoding, new resolution
     
-    def add_encoding(self, encodings, selected_src):
-        exist_flag = 2
-        if len(encodings) == 0:
-            exist_flag = 3 # not exist same title video
-        for e in encodings:
-            if e['name'] == selected_src['encoding']:
-                for s in e['videoSources']:
-                    if s['resolution'] == selected_src['resolution']:
-                        s['url'] = selected_src['url']  # still update url
-                        return 0 # already exists
-                e['videoSources'].append({
-                    'url': selected_src['url'],
-                    'resolution': selected_src['resolution'],
-                    'height': selected_src['height'],
-                    'width': selected_src['width']
-                })
-                return 1 # same encoding, new resolution
-        encodings.append({
-            'name': selected_src['encoding'],
-            'videoSources': [{
-                'url': selected_src['url'],
-                'resolution': selected_src['resolution'],
-                'height': selected_src['height'],
-                'width': selected_src['width']
-            }]
-        })
-        return exist_flag # new encoding
-    
-    def read_top_json(self):
-        # read playlist json
-        top_json_path = os.path.join(self.output_dir, 'top.json')
-        self.top_json = {'scenes': [], 'current_id': 1000}
-        if os.path.exists(top_json_path):
-            with open(top_json_path, 'r') as f:
-                self.top_json = json.load(f)
-        
-    def get_current_id(self):
-        # # current id
-        # video_num = 0
-        # for scene in self.top_json['scenes']:
-        #     video_num += len(scene['list'])
-        # return video_num
-        return self.top_json['current_id']
-    
-    def write_top_json(self):
-        top_json_path = os.path.join(self.output_dir, 'top.json')
-        with open(top_json_path, 'w') as f:
-            json.dump(self.top_json, f, indent=4)
-        
-        alias_json_path = os.path.join(self.output_dir, 'deovr')
-        if not os.path.exists(alias_json_path):
-            os.symlink(top_json_path, alias_json_path)
-    
-    def add_to_top_json(self, playlist, single_json, video_title_id):
-        short_single_json = {
-            'title': single_json['title'],
-            'vidoeLength': single_json['videoLength'],
-            'video_url': single_json['video_url'],
-            'thumbnail_url': single_json['thumbnailUrl'],
+    def get_videoSource(self, selected_src):
+        return {
+            'url': selected_src['url'],
+            'resolution': selected_src['resolution'],
+            'height': selected_src['height'],
+            'width': selected_src['width']
         }
-        self.read_top_json()
-        same_playlist = False
-        for scene in self.top_json['scenes']:
-            if scene['name'] == playlist:
-                for video in scene['list']:
-                    if video['title'] == single_json['title']:
-                        return
-                same_playlist = True
-                scene['list'].append(short_single_json)
-                break
-        if not same_playlist:
-            # add playlist
-            self.top_json['scenes'].append({
-                'name': playlist,
-                'list': [short_single_json]
-            })
-        
-        self.top_json['current_id'] += 1
-        self.write_top_json()
 
 if __name__ == '__main__':
     downloader = DeoVR_DL()
