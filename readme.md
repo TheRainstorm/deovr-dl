@@ -103,7 +103,7 @@ Open `https://example.com/` in DeoVR player then enjoy your videos.
 If you change server address, please run script to rewrite json files.
 
 ```shell
-python replace_server_name.py -T /path/to/deovr/root -S "https://old.example:4433" -R "https://new.example.com"
+python utils.py -T /path/to/deovr/root change -S "https://old.example:4433" -R "https://new.example.com"
 ```
 
 ## Scan local video
@@ -117,31 +117,34 @@ Sometimes we want to host local VR videos. It's tedious to write JSON by ourselv
 # scan video
 
 # scan for new video in foo directory, and add to playlist
-python generate_json.py -T /path/to/deovr/root -S "https://example.com" -P foo
+python utils.py -T /path/to/deovr/root scan -S "https://example.com" -P foo
 # Scan for specific video, and using specific 3d format
-python generate_json.py -T /path/to/deovr/root -S "https://example.com" -P foo -V video_file.mp4 --stereoMode='sbs' --screenType='dome' 
-
-#  scan all playlist, clean deleted file from json
-python generate_json.py -T /path/to/deovr/root -C
+python utils.py -T /path/to/deovr/root scan -S "https://example.com" -P foo -V video_file.mp4 --stereoMode='sbs' --screenType='dome' 
 
 # update metadata
 
 # overwrite all metadata. bit mask mean: 1: thumbnail, 2: preview video, 4: seeklookup video, 8: timeline preview image
-python generate_json.py -T /path/to/deovr/root -P foo -F 15 #(1111)
+python utils.py -T /path/to/deovr/root scan -P foo -F 15 #(1111)
 # regenerate thumbnail for specific video, snapshot at 3s
-python generate_json.py -T /path/to/deovr/root -P foo -V video_file.mp4 -F 1 -s 3
+python utils.py -T /path/to/deovr/root scan -P foo -V video_file.mp4 -F 1 -s 3
 # scan all missing metadata, don't overwrite
-python generate_json.py -T /path/to/deovr/root -P foo -F 16
+python utils.py -T /path/to/deovr/root scan -P foo -F 16
 ```
 
 ### helper utility
+
+The utility script have contain more useful function, you can use it to manage your video library.
 
 ```shell
 # list all playlist and videos number
 python utils.py -T /path/to/deovr/root list
 
+#  scan all playlist, check video file existence, delete from json if not exist
+python utils.py -T /path/to/deovr/root check
+
 # rename playlist name
 python utils.py -T /path/to/deovr/root rename --src playlist1 --dst playlist2
+
 # move all videos from playlist to another
 python utils.py -T /path/to/deovr/root move --src playlist1 --dst playlist2
 # move one video from playlist to another

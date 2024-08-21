@@ -1,173 +1,28 @@
 import argparse
-import glob
-import json
-import re
 import os
 import shutil
 
-from generate_json import add_to_top_json, read_top_json, write_top_json, del_top_json
+from db_utils import *
 
-def get_scene_index(top_json):
-    scene_index = {}
-    for scene in top_json['scenes']:
-        scene_index[scene['name']] = scene
-    return scene_index
-
-def get_title_index(scene):
-    title_index = {}
-    for video_json in scene['list']:
-        title_index[video_json['title']] = video_json
-    return title_index
-
-def db_del_playlist(top_json, playlist):
-    scene_index = get_scene_index(top_json)
-    if playlist in scene_index:
-        top_json['scenes'].remove(scene_index[playlist])
-        return True
-    return False
-
-def db_add_playlist(top_json, playlist):
-    top_json['scenes'].append({
-        'name': playlist,
-        'list': []
-    })
-
-def db_del_title(top_json, playlist, title):
-    scene_index = get_scene_index(top_json)
-    title_index = get_title_index(scene_index[playlist])
-    if title in title_index:
-        scene_index[playlist]['list'].remove(title_index[title])
-        return True
-    return False
-
-def db_add_title(top_json, playlist, video_json):
-    title = video_json['title']
-    short_video_json = {
-        'title': video_json['title'],
-        'vidoeLength': video_json['videoLength'],
-        'video_url': video_json['video_url'],
-        'thumbnail_url': video_json['thumbnailUrl'],
-    }
-    
-    # new scene
-    scene_index = get_scene_index(top_json)
-    if playlist not in scene_index:
-        top_json['scenes'].append({
-            'name': playlist,
-            'list': [short_video_json]
-        })
-        top_json['current_id'] += 1
-        return True
-    
-    title_index = get_title_index(scene_index[playlist])
-    if title not in title_index:
-        scene_index[playlist]['list'].append(short_video_json)
-        top_json['current_id'] += 1
-        return True
-    return False
-
-def clean_title_files(root_dir, playlist, title):
-    def del_files(src_dir, title):
-        files = glob.glob(os.path.join(src_dir, glob.escape(title)+"*"))
-        for file in files:
-            try:
-                os.remove(file)
-            except Exception as e:
-                print(f"{e}")
-        return len(files)
-    
-    # remove video
-    del_files(os.path.join(root_dir, playlist), title)
-    # remove metadata
-    del_files(os.path.join(root_dir, playlist, "metadata", "thumbnail"), title)
-    del_files(os.path.join(root_dir, playlist, "metadata", "preview"), title)
-    del_files(os.path.join(root_dir, playlist, "metadata", "seeklookup"), title)
-    del_files(os.path.join(root_dir, playlist, "metadata", "json"), title)
-
-def move_title_files(root_dir, src_playlist, dst_playlist, title):
-    def move_files(src_dir, dst_dir, title):
-        files = glob.glob(os.path.join(src_dir, glob.escape(title)+"*"))
-        for file in files:
-            try:
-                shutil.move(file, dst_dir)
-            except Exception as e:
-                print(f"{e}")
-        return len(files)
-    
-    # move video
-    move_files(os.path.join(root_dir, src_playlist), os.path.join(root_dir, dst_playlist), title)
-    # move metadata
-    move_files(os.path.join(root_dir, src_playlist, "metadata", "thumbnail"), os.path.join(root_dir, dst_playlist, "metadata", "thumbnail"), title)
-    move_files(os.path.join(root_dir, src_playlist, "metadata", "preview"), os.path.join(root_dir, dst_playlist, "metadata", "preview"), title)
-    move_files(os.path.join(root_dir, src_playlist, "metadata", "seeklookup"), os.path.join(root_dir, dst_playlist, "metadata", "seeklookup"), title)
-    move_files(os.path.join(root_dir, src_playlist, "metadata", "json"), os.path.join(root_dir, dst_playlist, "metadata", "json"), title)
-
-'''API functions
-'''
-def print_db_info(root_dir):
-    top_json = read_top_json(root_dir)
-    scene_index = get_scene_index(top_json)
-    print("Playlists:")
-    for scene_name, scene in scene_index.items():
-        print(f"{scene_name}: {len(scene['list'])}")
-
-def move_title_from_to(root_dir, src_playlist, dst_playlist, title):
-    top_json = read_top_json(root_dir)
-    scene_index = get_scene_index(top_json)
-    if src_playlist not in scene_index or dst_playlist not in scene_index:
-        print(f"Playlist {src_playlist} or {dst_playlist} not found")
-        return False
-    
-    # update json
-    json_path = os.path.join(args.root_dir, src_playlist, "metadata", "json", f"{title}.json")
-    with open(json_path, "r") as f:
-        json_text = f.read()
-    json_text_new = re.sub(rf'/{src_playlist}/', f'/{dst_playlist}/', json_text)
-    with open(json_path, "w") as f:
-        f.write(json_text_new)
-    video_json = json.loads(json_text_new)
-    
-    # move files
-    move_title_files(args.root_dir, src_playlist, dst_playlist, title)
-    
-    # update db
-    top_json = read_top_json(root_dir)
-    db_del_title(top_json, src_playlist, title)
-    db_add_title(top_json, dst_playlist, video_json)
-    write_top_json(root_dir, top_json)
-    return True
-
-def rename_playlist(root_dir, src_playlist, dst_playlist):
-    top_json = read_top_json(root_dir)
-    scene_index = get_scene_index(top_json)
-    if dst_playlist in scene_index:
-        print(f"Playlist {dst_playlist} already exists")
-        return False
-    
-    # rename playlist dir
-    os.rename(os.path.join(root_dir, src_playlist), os.path.join(root_dir, dst_playlist))
-    
-    # update json files
-    json_dir = os.path.join(root_dir, dst_playlist, "metadata", "json")
-    for file in os.listdir(json_dir):
-        if file.endswith(".json"):
-            title, ext = os.path.splitext(file)
-            json_path = os.path.join(json_dir, file)
-            with open(json_path, "r") as f:
-                json_text = f.read()
-            json_text_new = re.sub(rf'/{src_playlist}/', f'/{dst_playlist}/', json_text)
-            with open(json_path, "w") as f:
-                f.write(json_text_new)
-    
-    # update db
-    scene_index[src_playlist]['name'] = dst_playlist
-    write_top_json(root_dir, top_json)
-
-parser = argparse.ArgumentParser(description='DeoVR video library tool')
+parser = argparse.ArgumentParser(description='DeoVR database json manipulate tool')
 parser.add_argument('-T', '--root-dir', required=True, help='DeoVR root dir')
-# parser.add_argument('-S', '--server', default="http://localhost:8000", help='Old HTTP server address')
-
 subparsers = parser.add_subparsers(title="command", dest="command")
+
+# list
+parser_list = subparsers.add_parser("list", help="list playlist info")
+parser_list.add_argument('-P', '--playlist', help='list specific playlist')
+parser_list.add_argument('-a', '--all', action='store_true', help='list all videos')
+parser_list.add_argument('-m', '--multi-format', action='store_true', help='list video with multi-format')
+
+# change server address
+parser_change = subparsers.add_parser("change", help="change server address")
+parser_change.add_argument('-S', '--server', default="http://localhost:8000", help='Old HTTP server address')
+parser_change.add_argument('-R', '--replace-server', default="http://localhost:8000", help='New HTTP server address will replace')
+
+# rename
+parser_rename = subparsers.add_parser("rename", help="rename playlist")
+parser_rename.add_argument("--src", required=True, help="old name")
+parser_rename.add_argument("--dst", required=True, help="new name")
 
 # move
 parser_move = subparsers.add_parser("move", help="move playlist to another playlist")
@@ -180,23 +35,53 @@ parser_dupdel = subparsers.add_parser("dupdel", help="delete duplicate videos")
 parser_dupdel.add_argument("--src", required=True, help="clean dup")
 parser_dupdel.add_argument("--ref", required=True, help="used to compare")
 
-# rename
-parser_rename = subparsers.add_parser("rename", help="rename playlist")
-parser_rename.add_argument("--src", required=True, help="old name")
-parser_rename.add_argument("--dst", required=True, help="new name")
+# check
+parser_check = subparsers.add_parser("check", help="Scan directory, clean not exist video encoding in json")
+parser.add_argument('-P', '--playlist', help='check specific playlist, default clean all playlists')
 
-# list
-parser_list = subparsers.add_parser("list", help="list playlist info")
+# scan
+parser_scan = subparsers.add_parser("scan", help="Scan directory, ")
+parser_scan.add_argument('-S', '--server', default="http://localhost:8000", help='Old HTTP server address')
+parser_scan.add_argument('-P', '--playlist', help='update specific playlist, or scan all playlists')
+parser_scan.add_argument('-t', '--title', help='Scan video start with title')
+parser_scan.add_argument('--screenType', default="flat", help='flat, dome(180), sphere(360)')
+parser_scan.add_argument('--stereoMode', default="sbs", help='sbs, tb')
+parser_scan.add_argument('-s', '--thumbnail-start-time', type=int, default=-1, help='specific thumbnail shot time. default shot at 1/3 duration')
+parser_scan.add_argument('-F', '--force-thumbnail', type=int, default=0, help='bitmask, force regenerate video seek|video preview|thumbnail')
 
 args = parser.parse_args()
 
-if args.command == "move":
+root_dir = args.root_dir
+if args.command == "list":
+    db_json = read_db_json(root_dir)
+    scene_index = get_scene_index(db_json)
+    playlists = list(scene_index.keys())
+    if args.playlist:
+        playlists = [args.playlist]
+    for playlist in playlists:
+        print(f"{playlist}: ")
+        title_index = get_title_index(scene_index[playlist])
+        if args.all:
+            for title, video in title_index.items():
+                print(f"\t{title}")
+        elif args.multi_format:
+            for title, video in title_index.items():
+                video_json = read_video_json(root_dir, playlist, title)
+                formats = get_video_formats(video_json)
+                if len(formats) > 1:
+                    print(f"\t{title}: {formats}")
+        else:
+            print(f"\t{len(title_index)} videos")
+elif args.command == "change":
+    res = change_server(root_dir, args.server, args.replace_server)
+    print(res)
+elif args.command == "move":
     title_list = []
     if args.title:
         title_list = [args.title]
     else:
-        top_json = read_top_json(args.root_dir)
-        scene_index = get_scene_index(top_json)
+        db_json = read_db_json(root_dir)
+        scene_index = get_scene_index(db_json)
         if args.src not in scene_index or args.dst not in scene_index:
             print(f"Playlist {args.src} or {args.dst} not found")
             exit(1)
@@ -205,35 +90,47 @@ if args.command == "move":
     
     for title in title_list:
         print(f"Moving {title}")
-        move_title_from_to(args.root_dir, args.src, args.dst, title)
+        move_title_from_to(root_dir, args.src, args.dst, title)
     
     # remove playlist in db
-    top_json = read_top_json(args.root_dir)
-    db_del_playlist(top_json, args.src)
-    write_top_json(args.root_dir, top_json)
+    db_json = read_db_json(root_dir)
+    db_del_playlist(db_json, args.src)
+    write_db_json(root_dir, db_json)
     
     # remove playlist dir
     # input(f"Remove {args.src} playlist? Press Enter to continue...")
     print(f"Remove {args.src} playlist")
-    shutil.rmtree(os.path.join(args.root_dir, args.src))
+    shutil.rmtree(os.path.join(root_dir, args.src))
     
 elif args.command == "dupdel":
-    top_json = read_top_json(args.root_dir)
-    scene_index = get_scene_index(top_json)
+    db_json = read_db_json(root_dir)
+    scene_index = get_scene_index(db_json)
     title_index_src = get_title_index(scene_index[args.src])
     title_index_ref = get_title_index(scene_index[args.ref])
     for title in title_index_src:
         if title in title_index_ref:
             print(f"Delete {title}", end=" ")
-            clean_title_files(args.root_dir, args.src, title)
-            succ = db_del_title(top_json, args.src, title)
+            delete_title_files(root_dir, args.src, title)
+            succ = db_del_title(db_json, args.src, title)
             print("Succ" if succ else "Failed")
-            write_top_json(args.root_dir, top_json)
+            write_db_json(root_dir, db_json)
 
 elif args.command == "rename":
-    rename_playlist(args.root_dir, args.src, args.dst)
-elif args.command == "list":
-    print_db_info(args.root_dir)
+    rename_playlist(root_dir, args.src, args.dst)
+elif args.command == "check":
+    if args.playlist:
+        check_playlist(root_dir, args.playlist)
+    else:
+        scene_index = get_scene_index(read_db_json(root_dir))
+        for playlist in scene_index:
+            check_playlist(root_dir, playlist)
+elif args.command == "scan":
+    if args.playlist:
+        scan_playlist(root_dir, args.server, args.playlist, title=args.title, screenType=args.screenType, stereoMode=args.stereoMode, thumbnail_start_time=args.thumbnail_start_time, force_thumbnail=args.force_thumbnail)
+    else:
+        scene_index = get_scene_index(read_db_json(root_dir))
+        for playlist in scene_index:
+            scan_playlist(root_dir, args.server, playlist, title=args.title, screenType=args.screenType, stereoMode=args.stereoMode, thumbnail_start_time=args.thumbnail_start_time, force_thumbnail=args.force_thumbnail)
 else:
     print("Not implemented")
     exit(1)
