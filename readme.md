@@ -154,6 +154,21 @@ python utils.py -T /path/to/deovr/root move --src playlist1 -V "title" --dst pla
 python utils.py -T /path/to/deovr/root dupdel --src playlist1 --ref playlist2
 ```
 
+## WebUI
+
+Run script is not convenient, so I provide a simple web interface to manage your video library.
+
+TODO:
+
+- [x] display all videos
+- [x] delete video
+- [x] move video
+- [ ] download video
+
+```shell
+python server.py -T /path/to/deovr/root -l host:port
+```
+
 ## help options
 
 ```shell

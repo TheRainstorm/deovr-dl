@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <h2>Playlist</h2>
+  <ul>
+    {% for playlist, num in playlist_data.items() %}
+      <li>
+        <a href="/playlist/{{ playlist }}">{{ playlist }}</a>: {{ num }}
+      </li>
+    {% endfor %}
+  </ul>
+{% endblock %}

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% block head %}
+    <script type="text/javascript" src="{{url_for('static', filename='js/jquery-3.6.1.min.js')}}"></script>
+    <title>VR House - {% block title %}{% endblock %}</title>
+    {% endblock %}
+</head>
+<body>
+    <div id="nav">
+        <h2> Nav </h2>
+        {% block nav %}
+        <ul>
+            <li><a href="/">Home</a></li>
+        </ul>
+        {% endblock %}
+    </div>
+    <div id="content">
+        {% block content %}
+        {% endblock %}
+    </div>
+    <div id="footer">
+        {% block footer %}
+        <h2>Footer</h2>
+        &copy; Copyright 2024 by <a href="https://yfy.cqu.ai/">yfy</a>.
+        {% endblock %}
+    </div>
+    {% block javascript %}
+    {% endblock %}
+</body>
+{% block css %}
+{% endblock %}
+</html>

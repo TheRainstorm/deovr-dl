@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <div class="video">
+      <div class="poster">
+        <img src="{{ video.thumbnailUrl }}">
+      </div>
+  </div>
+  <div class="info">
+    <h3>title</h3>
+    <div>{{video.title}}</div>
+    <h3>description</h3>
+    <div>{{video.description}}</div>
+    <h3>Formats</h3>
+    <ul>
+    {% for encoding in video.encodings %}
+        <li> {{encoding.name}}
+            <ul> 
+            {% for source in encoding.videoSources %}
+                <li> {{source.width}}x{{source.height }}</li>
+            {% endfor %}
+            </ul>
+        </li>
+    {% endfor %}
+    </ul>
+  </div>
+  <div>
+    <h2>Move to</h2>
+    <form action="/api/move" method="POST">
+        <input type="text" name="src_playlist" value="{{playlist}}" hidden>
+        <input type="text" name="title" value="{{video.title}}" hidden>
+        <select id="choices" name="dst_playlist">
+            {% for playlist in playlists %}
+            <option value="{{ playlist}}">{{playlist}}</option>
+            {% endfor %}
+        </select>
+        <input type="submit" value="提交">
+    </form>
+  </div>
+{% endblock %}

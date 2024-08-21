@@ -1,5 +1,6 @@
-*.html
 test.py
+test.html
+tmp/
 *.json
 *.mp4
 *.tmp

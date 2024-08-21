@@ -83,6 +83,16 @@ def move_title_from_to(root_dir, src_playlist, dst_playlist, title):
         print(f"Playlist {src_playlist} or {dst_playlist} not found")
         return {"status": False, "msg": f"Playlist {src_playlist} or {dst_playlist} not found"}
     
+    title_index = get_title_index(scene_index[src_playlist])
+    if title not in title_index:
+        print(f"Title {title} not found in {src_playlist}")
+        return {"status": False, "msg": f"Title {title} not found in {src_playlist}"}
+    
+    title_index_dst = get_title_index(scene_index[dst_playlist])
+    if title in title_index_dst:
+        print(f"Title {title} already exists in {dst_playlist}")
+        return {"status": False, "msg": f"Title {title} already exists in {dst_playlist}"}
+
     # update json
     json_path = os.path.join(root_dir, src_playlist, "metadata", "json", f"{title}.json")
     json_text_new = replace_file_playlist(json_path, src_playlist, dst_playlist)
