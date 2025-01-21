@@ -246,6 +246,7 @@ def scan_playlist(root_dir, server, playlist, title=None, screenType='flat', ste
         print(f"Processing {i+1:3d}/{len(video_files):<3d}\t {title}")
         
         def probe_and_create():
+            nonlocal meta_data
             if not is_probed:
                 meta_data = ffmpeg_probe(video_path)
             
@@ -455,6 +456,7 @@ def move_title_files(root_dir, src_playlist, dst_playlist, title):
     move_files(os.path.join(root_dir, src_playlist, "metadata", "json"), os.path.join(root_dir, dst_playlist, "metadata", "json"), title)
 
 def ffmpeg_probe(file_path):
+    print(f"FFmpeg Probing {file_path}")
     probe = ffmpeg.probe(file_path)
     
     duration = float(probe["format"]["duration"])

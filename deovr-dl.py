@@ -6,7 +6,6 @@ import requests
 import argparse
 import re
 import json
-import re
 from donwloader import sanitize_filename, seconds_to_hms, download_file, download_file_in_chunks
 from compatibility import get_video_data, get_video_json_from_videoData
 from db_utils import *
