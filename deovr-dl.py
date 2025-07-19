@@ -54,7 +54,9 @@ class DeoVR_DL:
         # format select
         parser.add_argument('-F', '--list-format', action="store_true", help='list all available format')
         parser.add_argument('-A', '--ask-for-download', action="store_true", help='ask for download before download video')
-        parser.add_argument('-c', '--encoding', nargs='+', default='h265', help='filter selected encoding. e.g -c h264 h265, default only h265')
+        parser.add_argument('-c', '--encodings', nargs='+', default=['h265', 'av1', 'h264'], help='filter selected encoding. e.g -c h264 h265, default only h265. Moreover, The order defines the priority of encoding')
+        parser.add_argument('-q', '--max-quality', type=int, default=-1, help='filter selected quality. e.g pico4/ultra only support 4096p. default -1, no filter')
+        parser.add_argument('--also-download-best-quality', action='store_true', help='also download the best quality video, even if it is not in the supported quality')
         parser.add_argument('-f', '--select-format-idx', type=int, default=-1, help='select format by index. If not set, select the best quality with filted encoding')
         parser.add_argument('-L', '--skip-policy', type=int, default=0, help="0: same res and encoding, 1: same encoding, 2: same title (diff encoding & res)")
 
@@ -273,15 +275,24 @@ class DeoVR_DL:
         for i, s in enumerate(src_list):
             print(f"{i}: \t{s['quality']} \t{s['width']:>5d}x{s['height']:<5d} \t{s['encoding']}")
 
-    def select_format(self, src_list, encodings=['h264'], select_format_idx=-1):
+    def select_formats(self, src_list):
         if len(src_list) == 0:
-            return {}
+            return []
         if self.args.select_format_idx != -1:
-            return src_list[select_format_idx]
-        filter_src = [src for src in src_list if src['encoding'] in encodings]
-        selected_src = filter_src[-1] # best quality in filtered encoding
-
-        return selected_src
+            return [src_list[self.args.select_format_idx]]
+        
+        filter_src = [src for src in src_list if src['encoding'] in self.args.encodings]
+        # sort by quality then encoding priority
+        filter_src.sort(key=lambda x: (int(x['quality'][:-1]), -self.args.encodings.index(x['encoding']) if x['encoding'] in self.args.encodings else -len(self.args.encodings)))
+        # self.print_formats(filter_src)
+        best_src = filter_src[-1]
+        if self.args.max_quality > 0:
+            filter_src = [src for src in filter_src if int(src['quality'][:-1]) <= self.args.max_quality]
+        best2_src = filter_src[-1]
+        if best_src != best2_src and self.args.also_download_best_quality:
+            print(f"Also download the best quality: {best_src['quality']}")
+            return [best_src, best2_src]
+        return [best2_src]
 
     def download_single_video(self, video_json):
         if not video_json:
@@ -305,70 +316,72 @@ class DeoVR_DL:
             if not self.args.force_metadata:
                 return
         
-        selected_src = self.select_format(src_list, encodings=self.args.encoding, select_format_idx=self.args.select_format_idx)
+        selected_srcs = self.select_formats(src_list)
         
         if not self.args.hosting_mode: # just download video
-            self.download_video(title, self.root_dir, selected_src)
+            for selected_src in selected_srcs:
+                self.download_video(title, self.root_dir, selected_src)
             return
-        
-        # hosting mode
-        db_json = read_db_json(self.root_dir)
-        dump_json = video_json.copy()
-        dump_json['title'] = title
-        dump_json['id'] = get_current_id(db_json)
-        dump_json['ext'] = '.mp4'
-        del dump_json['encodings']
-    
-        # prepare dir
-        playlist = self.args.playlist
-        playlist_dir = os.path.join(self.root_dir, playlist)
 
-        thumbnail_dir = os.path.join(playlist_dir, 'metadata', 'thumbnail')
-        preview_dir = os.path.join(playlist_dir, 'metadata', 'preview')
-        seeklookup_dir = os.path.join(playlist_dir, 'metadata', 'seeklookup')
-        json_dir = os.path.join(playlist_dir, 'metadata', 'json')
-        make_dirs(thumbnail_dir, preview_dir, seeklookup_dir, json_dir, exist_ok=True)
+        for selected_src in selected_srcs:
+            # hosting mode
+            db_json = read_db_json(self.root_dir)
+            dump_json = video_json.copy()
+            dump_json['title'] = title
+            dump_json['id'] = get_current_id(db_json)
+            dump_json['ext'] = '.mp4'
+            del dump_json['encodings']
         
-        video_json_ori = read_video_json(self.root_dir, playlist, title)
-        if 'encodings' not in video_json_ori:
-            video_json_ori['encodings'] = []
-        
-        if not self.args.force_metadata:
-            # check exist skip
-            exist_flag = check_encoding(video_json_ori['encodings'], selected_src['encoding'], selected_src['resolution'])
-            if exist_flag <= self.args.skip_policy:
-                print(f'Skip this video. exist_flag={exist_flag}, skip_policy={self.args.skip_policy}')
-                return
-        
-            # download video
-            video_path, succ = self.download_video(title, playlist_dir, selected_src)
-            if not succ:
-                print(f"Download video failed, skip")
-                return
+            # prepare dir
+            playlist = self.args.playlist
+            playlist_dir = os.path.join(self.root_dir, playlist)
 
-            # modify url
-            url_path = urllib.parse.quote(os.path.relpath(video_path, self.root_dir))
-            selected_src['url'] = f"{self.server}/{url_path}"
+            thumbnail_dir = os.path.join(playlist_dir, 'metadata', 'thumbnail')
+            preview_dir = os.path.join(playlist_dir, 'metadata', 'preview')
+            seeklookup_dir = os.path.join(playlist_dir, 'metadata', 'seeklookup')
+            json_dir = os.path.join(playlist_dir, 'metadata', 'json')
+            make_dirs(thumbnail_dir, preview_dir, seeklookup_dir, json_dir, exist_ok=True)
             
-            add_encoding(video_json_ori['encodings'], selected_src['encoding'],
-                              self.get_videoSource(selected_src))
-        
-        # download metadata (after video download, if we don't download video, we don't need metadata)
-        print("Downloading metadata")
-        self.download_others(video_json, dump_json, title, thumbnail_dir, preview_dir, seeklookup_dir)
-        
-        # self extended key, top playlist json will use it
-        dump_json['video_url'] = f"{self.server}/{playlist}/metadata/json/{title}.json"  # test, it's ok
-        video_json_ori.update(dump_json)
-        
-        # save video json
-        print("Save single video json")
-        write_video_json(self.root_dir, playlist, title, video_json_ori)
-        
-        # add to db
-        print("Add to top json")
-        db_add_title(db_json, playlist, video_json_ori)
-        write_db_json(self.root_dir, db_json)
+            video_json_ori = read_video_json(self.root_dir, playlist, title)
+            if 'encodings' not in video_json_ori:
+                video_json_ori['encodings'] = []
+            
+            if not self.args.force_metadata:
+                # check exist skip
+                exist_flag = check_encoding(video_json_ori['encodings'], selected_src['encoding'], selected_src['resolution'])
+                if exist_flag <= self.args.skip_policy:
+                    print(f'Skip this video. exist_flag={exist_flag}, skip_policy={self.args.skip_policy}')
+                    continue
+            
+                # download video
+                video_path, succ = self.download_video(title, playlist_dir, selected_src)
+                if not succ:
+                    print(f"Download video failed, skip")
+                    continue
+
+                # modify url
+                url_path = urllib.parse.quote(os.path.relpath(video_path, self.root_dir))
+                selected_src['url'] = f"{self.server}/{url_path}"
+                
+                add_encoding(video_json_ori['encodings'], selected_src['encoding'],
+                                self.get_videoSource(selected_src))
+            
+            # download metadata (after video download, if we don't download video, we don't need metadata)
+            print("Downloading metadata")
+            self.download_others(video_json, dump_json, title, thumbnail_dir, preview_dir, seeklookup_dir)
+            
+            # self extended key, top playlist json will use it
+            dump_json['video_url'] = f"{self.server}/{playlist}/metadata/json/{title}.json"  # test, it's ok
+            video_json_ori.update(dump_json)
+            
+            # save video json
+            print("Save single video json")
+            write_video_json(self.root_dir, playlist, title, video_json_ori)
+            
+            # add to db
+            print("Add to top json")
+            db_add_title(db_json, playlist, video_json_ori)
+            write_db_json(self.root_dir, db_json)
        
     def download_video(self, title, output_dir, selected_src):
         succ = True
